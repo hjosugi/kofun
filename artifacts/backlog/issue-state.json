@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 30,
+  "open_issues": 29,
   "issues": [
     {
       "number": 26,
@@ -30,6 +30,14 @@
         {
           "agent_id": "codex-refresh-26-wasm-roadmap-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-root-26-wasm-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-26-wasm-audit-20260808",
+          "status": "released"
         }
       ]
     },
@@ -42,7 +50,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+        "d0e000d535fb6861abe7a5e582a958d29d1e2461"
       ],
       "claims": [
         {
@@ -51,6 +59,14 @@
         },
         {
           "agent_id": "codex-refresh-30-topology-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-30-d0e-adt-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-30-d0e-adt-audit-20260808",
           "status": "released"
         }
       ]
@@ -64,7 +80,7 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257"
+        "d0e000d535fb6861abe7a5e582a958d29d1e2461"
       ],
       "claims": [
         {
@@ -73,6 +89,14 @@
         },
         {
           "agent_id": "codex-31-topology-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-31-main-refresh-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-31-main-refresh-20260808",
           "status": "released"
         }
       ]
@@ -111,7 +135,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "6f71b6df5cf54aa16542b89494d2194c4172a97e",
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257",
+        "d0e000d535fb6861abe7a5e582a958d29d1e2461",
         "d3429207447e112f5230d5be38576959130d288e"
       ],
       "claims": [
@@ -121,6 +145,14 @@
         },
         {
           "agent_id": "codex-271-boundary-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-271-d0e-fixedpoint-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-271-d0e-fixedpoint-audit-20260808",
           "status": "released"
         }
       ]
@@ -214,29 +246,34 @@
         {
           "agent_id": "codex-314-closeability-audit-20260808",
           "status": "released"
-        }
-      ]
-    },
-    {
-      "number": 554,
-      "title": "Stage 2: lower contiguous payload-free enum matches to C switch",
-      "state_labels": [
-        "needs-decision"
-      ],
-      "state_line": "needs-decision",
-      "blocked_by": [],
-      "evidence_commits": [
-        "7cdecd68dd42504da5881c6253e8f3d091636064",
-        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
-      ],
-      "claims": [
+        },
         {
-          "agent_id": "codex-refresh-554-enum-capacity-20260808",
+          "agent_id": "codex-314-optional-coalescing-20260808",
           "status": "active"
         },
         {
-          "agent_id": "codex-refresh-554-enum-capacity-20260808",
+          "agent_id": "codex-314-optional-coalescing-20260808",
           "status": "released"
+        },
+        {
+          "agent_id": "codex-314-optional-coalescing-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-314-optional-coalescing-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-314-optional-coalescing-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-314-optional-coalescing-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-root-314-integrate-20260808",
+          "status": "active"
         }
       ]
     },
@@ -297,7 +334,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "10780c2ff4fd7ba97b4beba245d38d0fac7a3c25",
-        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
+        "70ff1b2b35fbdf1cc3084b96d283bc07e84f35de"
       ],
       "claims": [
         {
@@ -314,6 +351,14 @@
         },
         {
           "agent_id": "codex-637-closeability-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-637-1094-split-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-637-1094-split-audit-20260808",
           "status": "released"
         }
       ]
@@ -571,7 +616,7 @@
       "state_line": "blocked",
       "blocked_by": [],
       "evidence_commits": [
-        "041816f714eb82ed72e4a773c0112ed87f71b93b"
+        "d0e000d535fb6861abe7a5e582a958d29d1e2461"
       ],
       "claims": [
         {
@@ -588,6 +633,14 @@
         },
         {
           "agent_id": "codex-refresh-885-upgrade-frontier-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-885-d0e-readiness-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-885-d0e-readiness-audit-20260808",
           "status": "released"
         }
       ]
@@ -748,12 +801,12 @@
       "number": 1032,
       "title": "Self-host driver diagnostics: give A1's refusal a code and a span",
       "state_labels": [
-        "needs-detail"
+        "ready"
       ],
-      "state_line": "needs-detail",
+      "state_line": "ready",
       "blocked_by": [],
       "evidence_commits": [
-        "8dc8f641fccdef3f6d2e5b0209fc56c329cd836c"
+        "70ff1b2b35fbdf1cc3084b96d283bc07e84f35de"
       ],
       "claims": [
         {
@@ -783,6 +836,26 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "merged"
+        },
+        {
+          "agent_id": "codex-1032-a1-diagnostics-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-1032-a1-diagnostics-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-root-1032-integrate-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-1032-integrate-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-1032-integrate-20260808",
+          "status": "pr-open"
         }
       ]
     }
