@@ -1,0 +1,208 @@
+file-id=ea013a9fe35938746c6b4b97b14c96f2be7c5ab90352e7fc9fce90a25dfbe784
+module-id=5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9
+source-sha256=aede30ee5317620c21fa2a94729606d9d7a96bfbca039feccbc9564da1338f66
+generation=19
+expression=122..128
+expressions=5 candidates=5 hidden=yes
+result-bytes=5783 repeated=identical
+stale=stale-source span=invalid-position source-buffer=refused
+invalid-visibility-kind-status=hidden
+unterminated-snapshot-text=refused
+{
+  "analysis": {
+    "file_id": "ea013a9fe35938746c6b4b97b14c96f2be7c5ab90352e7fc9fce90a25dfbe784",
+    "generation": 19,
+    "interface_set_sha256": "80d1c79a9cc431fc7b585d15fcf9a21b31e2daa8002300b1b95cda519d163804",
+    "semantic_compatibility": "stage2-semantic-v1",
+    "source_sha256": "aede30ee5317620c21fa2a94729606d9d7a96bfbca039feccbc9564da1338f66"
+  },
+  "authoritative": false,
+  "diagnostics": [],
+  "limit_profile": "kofun.discovery/default-v1",
+  "omissions": [
+    {
+      "reason": "hidden-by-visibility",
+      "requested_spelling": null
+    }
+  ],
+  "operations": [
+    {
+      "availability": "unavailable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "double",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "0e174f4688f560d7814fd67ab9e5b81a506f121963706ac55c02edabde6fcbd6"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "function",
+        "module": "synthetic-root",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
+        },
+        "status": "provisional",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "synthetic-root.double",
+      "receiver_mode": "none",
+      "rejection_reasons": [
+        "incomplete-analysis"
+      ],
+      "signature": null,
+      "source": null,
+      "status": "provisional",
+      "visibility": "internal"
+    },
+    {
+      "availability": "unavailable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "scan",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "18672bd22be85521d18be7a39c3bb851e9b886f9f2d50ffcac876ef444e0c6b2"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "function",
+        "module": "synthetic-root",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
+        },
+        "status": "provisional",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "synthetic-root.scan",
+      "receiver_mode": "none",
+      "rejection_reasons": [
+        "incomplete-analysis"
+      ],
+      "signature": null,
+      "source": null,
+      "status": "provisional",
+      "visibility": "pub"
+    },
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "answer",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "262ef061df94e28333c71c6df62bc31a1bbba4e4b70f5d9e096bb3e488e9c4c0"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "function",
+        "module": "synthetic-root",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "synthetic-root.answer",
+      "receiver_mode": "none",
+      "rejection_reasons": [],
+      "signature": "() -> Int",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    },
+    {
+      "availability": "unavailable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "Count",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "7df3cb8fefdce750fadb0e5270daa30ea1eb3a37e17fe9b2ebaecde2bccb021f"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "function",
+        "module": "synthetic-root",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
+        },
+        "status": "provisional",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "synthetic-root.Count",
+      "receiver_mode": "none",
+      "rejection_reasons": [
+        "incomplete-analysis"
+      ],
+      "signature": null,
+      "source": null,
+      "status": "provisional",
+      "visibility": "pub"
+    },
+    {
+      "availability": "callable",
+      "dependencies": [],
+      "diagnostic_ids": [],
+      "display_name": "Empty",
+      "documentation": null,
+      "effects": [],
+      "generic_requirements": [],
+      "identity": {
+        "kind": "SymbolId",
+        "value": "7f36117e6f1970219f540d9c1b5c422c846859d06f871fd2fe2512b1764d43f9"
+      },
+      "origin": {
+        "implementation_identity": null,
+        "kind": "function",
+        "module": "synthetic-root",
+        "module_identity": {
+          "kind": "ModuleId",
+          "value": "5db3d8a33be4661e3887b6197d5ccce073f37e0e3a103a458e6f9a8a7369afd9"
+        },
+        "status": "validated",
+        "trait": null,
+        "trait_identity": null
+      },
+      "qualified_name": "synthetic-root.Empty",
+      "receiver_mode": "none",
+      "rejection_reasons": [],
+      "signature": "() -> LiveChoice",
+      "source": null,
+      "status": "validated",
+      "visibility": "pub"
+    }
+  ],
+  "reason": "incomplete-current-file-facts",
+  "schema": "kofun.discovery.result/v1",
+  "status": "partial",
+  "truncated": false,
+  "type": {
+    "dependencies": [],
+    "diagnostic_ids": [],
+    "display": null,
+    "identity": null,
+    "reason": "type-not-available-in-current-subset",
+    "status": "unavailable"
+  }
+}

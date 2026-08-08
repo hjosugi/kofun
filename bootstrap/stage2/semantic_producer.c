@@ -3456,12 +3456,340 @@ static bool producer_build_interface_snapshot(
     return true;
 }
 
+static bool producer_is_discovery_expression(KofunSemanticNodeKind kind) {
+    return kind == KOFUN_SEMANTIC_NODE_CALL ||
+        kind == KOFUN_SEMANTIC_NODE_REFERENCE ||
+        kind == KOFUN_SEMANTIC_NODE_IF ||
+        kind == KOFUN_SEMANTIC_NODE_MATCH;
+}
+
+static const ProducerIdentity *producer_find_identity(
+    const Producer *producer,
+    const KofunSemanticId *owner,
+    KofunSemanticIdentityKind kind
+) {
+    size_t index;
+    for (index = 0u; index < producer->identity_count; index += 1u) {
+        const ProducerIdentity *identity = &producer->identities[index];
+        if (identity->value.kind == kind &&
+            memcmp(
+                identity->value.owner_node_id.bytes,
+                owner->bytes,
+                KOFUN_SEMANTIC_ID_BYTES) == 0) {
+            return identity;
+        }
+    }
+    return NULL;
+}
+
+static bool producer_add_discovery_candidate(
+    const Producer *producer,
+    KofunStage2DiscoverySnapshot *snapshot,
+    KofunStage2DiscoveryCandidateKind kind,
+    const KofunSemanticId *symbol_id,
+    const char *name,
+    const char *signature,
+    KofunSemanticStatus status,
+    KofunStage2InterfaceVisibility visibility
+) {
+    KofunStage2DiscoveryCandidate *candidate;
+    int written;
+    if (snapshot->candidate_count >=
+            KOFUN_STAGE2_DISCOVERY_MAX_CANDIDATES ||
+        symbol_id == NULL || name == NULL || signature == NULL ||
+        name[0] == '\0') {
+        return false;
+    }
+    candidate = &snapshot->candidates[snapshot->candidate_count++];
+    memset(candidate, 0, sizeof(*candidate));
+    candidate->kind = kind;
+    candidate->symbol_id = *symbol_id;
+    candidate->module_id = producer->source_record.module_id;
+    candidate->status = status;
+    candidate->visibility = visibility;
+    written = snprintf(
+        candidate->display_name,
+        sizeof(candidate->display_name),
+        "%s",
+        name
+    );
+    if (written < 0 || (size_t)written >= sizeof(candidate->display_name)) {
+        return false;
+    }
+    written = snprintf(
+        candidate->module_name,
+        sizeof(candidate->module_name),
+        "%s",
+        "synthetic-root"
+    );
+    if (written < 0 || (size_t)written >= sizeof(candidate->module_name)) {
+        return false;
+    }
+    written = snprintf(
+        candidate->qualified_name,
+        sizeof(candidate->qualified_name),
+        "synthetic-root.%s",
+        name
+    );
+    if (written < 0 || (size_t)written >= sizeof(candidate->qualified_name)) {
+        return false;
+    }
+    written = snprintf(
+        candidate->signature,
+        sizeof(candidate->signature),
+        "%s",
+        signature
+    );
+    if (written < 0 || (size_t)written >= sizeof(candidate->signature)) {
+        return false;
+    }
+    return true;
+}
+
+static bool producer_build_discovery_snapshot(
+    Producer *producer,
+    KofunStage2DiscoverySnapshot *snapshot
+) {
+    size_t index;
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->package_id = producer->source_record.package_id;
+    snapshot->module_id = producer->source_record.module_id;
+    snapshot->file_id = producer->source_record.file_id;
+    snapshot->source_bytes = producer->source_record.source_bytes;
+    memcpy(
+        snapshot->source_sha256,
+        producer->source_record.source_sha256,
+        sizeof(snapshot->source_sha256)
+    );
+    snapshot->caller_generation = producer->source_record.caller_generation;
+    if (producer->source_record.semantic_compatibility.bytes == NULL ||
+        producer->source_record.semantic_compatibility.length == 0u ||
+        producer->source_record.semantic_compatibility.length >=
+            sizeof(snapshot->semantic_compatibility)) {
+        return false;
+    }
+    memcpy(
+        snapshot->semantic_compatibility,
+        producer->source_record.semantic_compatibility.bytes,
+        producer->source_record.semantic_compatibility.length
+    );
+    snapshot->semantic_compatibility[
+        producer->source_record.semantic_compatibility.length] = '\0';
+
+    for (index = 0u; index < producer->node_count; index += 1u) {
+        const ProducerNode *node = &producer->nodes[index];
+        const ProducerIdentity *type_identity;
+        ProducerFact *type_fact;
+        KofunStage2DiscoveryExpression *expression;
+        int written;
+        if (!producer_is_discovery_expression(node->value.kind)) continue;
+        if (snapshot->expression_count >=
+                KOFUN_STAGE2_DISCOVERY_MAX_EXPRESSIONS) {
+            return false;
+        }
+        expression = &snapshot->expressions[snapshot->expression_count++];
+        memset(expression, 0, sizeof(*expression));
+        expression->node = node->value;
+        expression->node.dependencies = NULL;
+        expression->node.dependency_count = 0u;
+        expression->node.diagnostic_ids = NULL;
+        expression->node.diagnostic_count = 0u;
+        type_identity = producer_find_identity(
+            producer,
+            &node->value.node_id,
+            KOFUN_SEMANTIC_ID_TYPE
+        );
+        if (type_identity != NULL) {
+            expression->has_type_identity = true;
+            expression->type_identity = type_identity->value;
+        }
+        type_fact = producer_find_fact(
+            producer,
+            &node->value.node_id,
+            KOFUN_SEMANTIC_FACT_TYPE
+        );
+        if (type_fact == NULL) continue;
+        expression->has_type_fact = true;
+        expression->type_status = type_fact->value.status;
+        written = snprintf(
+            expression->type_display,
+            sizeof(expression->type_display),
+            "%s",
+            type_fact->display
+        );
+        if (written < 0 ||
+            (size_t)written >= sizeof(expression->type_display)) {
+            return false;
+        }
+        written = snprintf(
+            expression->type_reason,
+            sizeof(expression->type_reason),
+            "%s",
+            type_fact->reason
+        );
+        if (written < 0 ||
+            (size_t)written >= sizeof(expression->type_reason)) {
+            return false;
+        }
+    }
+
+    /*
+     * The ownership profile records a syntactically exact use before its
+     * current narrow scope builder can bind the full List[Text] parameter.
+     * Keep that occurrence selectable, but carry no type fact: discovery may
+     * honestly answer it as unavailable while still refusing a client span
+     * that does not match what Stage 2 parsed.  No name or rendered type is
+     * promoted from this recovery record.
+     */
+    if (producer->scope_hir != NULL) {
+        int64_t line = hir_record_start(
+            producer->scope_hir,
+            "candidate-use",
+            0
+        );
+        while (line >= 0) {
+            char *start_text = hir_field(producer->scope_hir, line, 1);
+            char *end_text = hir_field(producer->scope_hir, line, 2);
+            int64_t start = decimal_value(start_text);
+            int64_t end = decimal_value(end_text);
+            bool present = false;
+            size_t expression_index;
+            for (expression_index = 0u;
+                 expression_index < snapshot->expression_count;
+                 expression_index += 1u) {
+                const KofunSemanticNode *node =
+                    &snapshot->expressions[expression_index].node;
+                if (node->span.start == (uint32_t)start &&
+                    node->span.end == (uint32_t)end) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present && start >= 0 && end > start &&
+                (uint64_t)end <= producer->input->source_length) {
+                KofunStage2DiscoveryExpression *expression;
+                if (snapshot->expression_count >=
+                        KOFUN_STAGE2_DISCOVERY_MAX_EXPRESSIONS) {
+                    free(start_text);
+                    free(end_text);
+                    return false;
+                }
+                expression =
+                    &snapshot->expressions[snapshot->expression_count++];
+                memset(expression, 0, sizeof(*expression));
+                expression->node.kind = KOFUN_SEMANTIC_NODE_REFERENCE;
+                expression->node.span = producer_span(start, end);
+                expression->node.status = KOFUN_SEMANTIC_UNAVAILABLE;
+                kofun_semantic_derive_id(
+                    "kofun.sidecar.node/v1",
+                    &producer->source_record.file_id,
+                    expression->node.kind,
+                    expression->node.span,
+                    0u,
+                    &expression->node.node_id
+                );
+            }
+            free(start_text);
+            free(end_text);
+            line = hir_record_start(
+                producer->scope_hir,
+                "candidate-use",
+                line + 1
+            );
+        }
+    }
+
+    for (index = 0u; index < producer->function_count; index += 1u) {
+        const ProducerFunction *function = &producer->functions[index];
+        ProducerFact *signature = producer_find_fact(
+            producer,
+            &function->node,
+            KOFUN_SEMANTIC_FACT_TYPE
+        );
+        ProducerFact *effect = producer_find_fact(
+            producer,
+            &function->node,
+            KOFUN_SEMANTIC_FACT_EFFECT
+        );
+        KofunSemanticStatus status = KOFUN_SEMANTIC_UNAVAILABLE;
+        if (function->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) {
+            snapshot->hidden_candidate_present = true;
+            continue;
+        }
+        if (signature != NULL && effect != NULL &&
+            signature->value.status == KOFUN_SEMANTIC_VALIDATED &&
+            effect->value.status == KOFUN_SEMANTIC_VALIDATED) {
+            status = strcmp(effect->display, "pure") == 0 &&
+                    signature->value.dependency_count == 0u &&
+                    effect->value.dependency_count == 0u ?
+                KOFUN_SEMANTIC_VALIDATED :
+                KOFUN_SEMANTIC_PROVISIONAL;
+        }
+        if (signature == NULL || effect == NULL ||
+            !producer_add_discovery_candidate(
+                producer,
+                snapshot,
+                KOFUN_STAGE2_DISCOVERY_FUNCTION,
+                &function->symbol,
+                function->name,
+                status == KOFUN_SEMANTIC_VALIDATED ?
+                    signature->display : "",
+                status,
+                function->visibility)) {
+            return false;
+        }
+    }
+
+    for (index = 0u; index < producer->constructor_count; index += 1u) {
+        const ProducerConstructor *constructor =
+            &producer->constructors[index];
+        char signature[KOFUN_STAGE2_DISCOVERY_FACT_TEXT_BYTES];
+        KofunSemanticStatus status;
+        if (constructor->visibility == KOFUN_STAGE2_INTERFACE_PRIVATE) {
+            snapshot->hidden_candidate_present = true;
+            continue;
+        }
+        int written = constructor->payload_count == 0u ?
+            snprintf(
+                signature,
+                sizeof(signature),
+                "() -> %s",
+                constructor->result_type) :
+            snprintf(
+                signature,
+                sizeof(signature),
+                "%s -> %s",
+                constructor->payload_type,
+                constructor->result_type);
+        status = constructor->payload_count == 0u ?
+            KOFUN_SEMANTIC_VALIDATED : KOFUN_SEMANTIC_PROVISIONAL;
+        if (written < 0 || (size_t)written >= sizeof(signature) ||
+            constructor->payload_count > 1u ||
+            !producer_add_discovery_candidate(
+                producer,
+                snapshot,
+                KOFUN_STAGE2_DISCOVERY_CONSTRUCTOR,
+                &constructor->symbol,
+                constructor->name,
+                status == KOFUN_SEMANTIC_VALIDATED ? signature : "",
+                status,
+                constructor->visibility)) {
+            return false;
+        }
+    }
+    snapshot->source_status = KOFUN_SOURCE_CHECKED;
+    snapshot->completeness = KOFUN_SEMANTIC_COMPLETE;
+    snapshot->committed = true;
+    return true;
+}
+
 static bool producer_run(
     const KofunStage2SemanticInput *input,
     KofunSemanticSink *sink,
     bool cancellation_observed_after_commit,
     KofunSemanticBytes edition,
     KofunStage2InterfaceSnapshot *snapshot,
+    KofunStage2DiscoverySnapshot *discovery_snapshot,
     KofunStage2SemanticResult *result
 ) {
     Producer producer;
@@ -3472,7 +3800,8 @@ static bool producer_run(
     memset(result, 0, sizeof(*result));
     result->source_status = KOFUN_SOURCE_FAILED;
     result->completeness = KOFUN_SEMANTIC_PARTIAL;
-    if (input == NULL || (sink == NULL && snapshot == NULL) ||
+    if (input == NULL ||
+        (sink == NULL && snapshot == NULL && discovery_snapshot == NULL) ||
         input->source == NULL ||
         input->source_length > UINT32_MAX ||
         input->source_length > KOFUN_SEMANTIC_MAX_EVENT_BYTES ||
@@ -3674,7 +4003,7 @@ static bool producer_run(
         );
         return false;
     }
-    if (snapshot != NULL &&
+    if ((snapshot != NULL || discovery_snapshot != NULL) &&
         (authority.exit_class != 0u || cancellation_observed_after_commit)) {
         if (cancellation_observed_after_commit && authority.exit_class == 0u) {
             result->source_status = KOFUN_SOURCE_CANCELLED;
@@ -3687,6 +4016,16 @@ static bool producer_run(
         !producer_build_interface_snapshot(&producer, edition, snapshot, result)) {
         stage2_authority_result_destroy(&authority);
         free(owned_source);
+        return false;
+    }
+    if (discovery_snapshot != NULL &&
+        !producer_build_discovery_snapshot(&producer, discovery_snapshot)) {
+        stage2_authority_result_destroy(&authority);
+        free(owned_source);
+        producer_set_tooling_error(
+            result, "ETS04", 0u, PRODUCER_EVENT_NONE,
+            "discovery snapshot projection failed"
+        );
         return false;
     }
     if (sink != NULL && !producer_emit(
@@ -3711,7 +4050,7 @@ bool kofun_stage2_produce_semantic_events(
     KofunSemanticBytes no_edition = {NULL, 0u};
     return producer_run(
         input, sink, cancellation_observed_after_commit,
-        no_edition, NULL, result
+        no_edition, NULL, NULL, result
     );
 }
 
@@ -3726,8 +4065,27 @@ bool kofun_stage2_compile_interface(
     memset(snapshot, 0, sizeof(*snapshot));
     return producer_run(
         input, NULL, cancellation_observed_after_commit,
-        edition, snapshot, result
+        edition, snapshot, NULL, result
     );
+}
+
+bool kofun_stage2_analyze_discovery(
+    const KofunStage2SemanticInput *input,
+    KofunStage2DiscoverySnapshot *snapshot,
+    KofunStage2SemanticResult *result
+) {
+    KofunSemanticBytes no_edition = {NULL, 0u};
+    bool succeeded;
+    if (snapshot == NULL) return false;
+    memset(snapshot, 0, sizeof(*snapshot));
+    succeeded = producer_run(
+        input, NULL, false, no_edition, NULL, snapshot, result
+    );
+    if (succeeded) {
+        result->source_status = snapshot->source_status;
+        result->completeness = snapshot->completeness;
+    }
+    return succeeded;
 }
 
 #ifndef KOFUN_STAGE2_SEMANTIC_PRODUCER_LIBRARY
