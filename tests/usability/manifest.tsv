@@ -26,5 +26,5 @@
 4	executable-today	stage2-run	04_adt_record_match.kofun	04_adt_record_match.kt	kotlin	no kotlinc in CI; comparison is read, not run
 5	blocked-on	624	05_higher_order.kofun	05_higher_order.kt	kotlin	no kotlinc in CI; comparison is read, not run
 6	blocked-on	31	06_monad_laws.kofun	06_monad_laws.rs	rust	comparison is deliberately not like-for-like; see its header
-7	executable-today	frozen-profile	07_self_host_profile.kofun	-	none	no comparison: rewriting a 3175-line self-hosting compiler idiomatically is not a bounded corpus item, and a fragment would be a strawman
+7	executable-today	frozen-profile	07_self_host_profile.kofun	-	none	no comparison: rewriting a 3523-line self-hosting compiler idiomatically is not a bounded corpus item, and a fragment would be a strawman
 8	blocked-on	624	08_stream_pipeline.kofun	08_stream_pipeline.go	go	-

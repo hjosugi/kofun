@@ -134,7 +134,7 @@ Kofun row rather than 0. Recording it as `n/a` is what keeps the gap to the
 four comparison languages visible instead of averaged into a total.
 
 Row 7 has no comparison implementation. The recorded reason: rewriting a
-3,175-line self-hosting compiler idiomatically in Go, Gleam, Kotlin, or Rust
+3,523-line self-hosting compiler idiomatically in Go, Gleam, Kotlin, or Rust
 is not a bounded corpus item, and a fragment of one would be a strawman
 rather than a comparison. #624 names four comparison languages, not four
 compilers.

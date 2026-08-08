@@ -22,7 +22,8 @@ export const GROUPS = Object.freeze([
         hint: 'Bootstrap seeds, Stage 2, fixed-point evidence, code generation, and ABIs.',
         tasks: [
             'compiler', 'bootstrap', 'selfhost-profile', 'selfhost-self-compile',
-            'selfhost-frontend', 'selfhost-c11', 'selfhost-c11-control',
+            'selfhost-driver-diagnostics', 'selfhost-frontend', 'selfhost-c11',
+            'selfhost-c11-control',
             'selfhost-native', 'stage2', 'stage2-events', 'native', 'wasm',
             'wasm-host-abi', 'wasm-host-profile', 'wasm-object-arena',
             'wasm-list-v1', 'c-abi', 'bindgen-c'
