@@ -1,7 +1,8 @@
 'use strict';
 
-// The focused gate for #1033: completion and navigation apply the compiler's
-// accepted visibility decision, using the requesting file as caller context.
+// The focused gate for #1033 and #1081: completion and navigation apply the
+// compiler's accepted visibility decision, using the requesting file as caller
+// context, after an explicit selective import creates the local binding.
 //
 // Every scenario drives the real `tooling/lsp/kofun-lsp` over stdio. Nothing
 // here reaches into the server's internals, because the property under test is
@@ -15,6 +16,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Client } = require('./client.js');
+const {
+  buildSelectiveImportTargetIndex,
+  forEachImportedDeclaration
+} = require('../../tooling/lsp/import-target-index.js');
 
 const SERVER = process.argv[2];
 if (!SERVER) {
@@ -25,13 +30,17 @@ if (!SERVER) {
 // `private` is the default, so the unmarked declaration is the one that proves
 // an omitted modifier is treated as private rather than as unknown.
 const DEPENDENCY = [
+  'module demo.dep', '',
   'fn dep_unmarked(value: Int) -> Int {', '    return value', '}', '',
   'private fn dep_private(value: Int) -> Int {', '    return value', '}', '',
   'internal fn dep_internal(value: Int) -> Int {', '    return value', '}', '',
-  'pub fn dep_public(value: Int) -> Int {', '    return value', '}', ''
+  'pub fn dep_public(value: Int) -> Int {', '    return value', '}', '',
+  'pub fn dep_unlisted(value: Int) -> Int {', '    return value', '}', ''
 ].join('\n');
 
 const CALLER = [
+  'module demo.caller',
+  'from demo.dep import dep_unmarked, dep_private, dep_internal, dep_public', '',
   'private fn own_private(value: Int) -> Int {', '    return value', '}', '',
   'fn caller() -> Int {', '    return dep', '}', '',
   'fn reaches_public() -> Int {', '    return dep_public(1)', '}', '',
@@ -107,6 +116,49 @@ class Session {
 const DEP_PREFIX_LINE = '    return dep';
 const DEP_PREFIX_COLUMN = 14;
 
+// Pin work, not elapsed time: the real reachability path uses these helpers,
+// and this counter proves a 10k-import/10k-declaration document performs one
+// indexing step per import and one target probe per declaration. Two extra
+// aliases for one target also prove the index retains every local spelling.
+function scenarioWideImportWorkIsLinear() {
+  const width = 10000;
+  const modulePath = 'demo.wide';
+  const imports = [];
+  const declarations = [];
+  for (let index = 0; index < width; index += 1) {
+    const name = `item_${String(index).padStart(5, '0')}`;
+    imports.push({ modulePath, importedName: name, localName: `local_${name}` });
+    declarations.push({ name });
+  }
+  imports.push(
+    { modulePath, importedName: 'item_04200', localName: 'alias_a' },
+    { modulePath, importedName: 'item_04200', localName: 'alias_b' }
+  );
+
+  const work = {};
+  const targets = buildSelectiveImportTargetIndex(imports, work);
+  const matched = new Map();
+  forEachImportedDeclaration(
+    targets,
+    modulePath,
+    declarations,
+    (declaration, bindings) => matched.set(
+      declaration.name,
+      bindings.map((binding) => binding.localName)
+    ),
+    work
+  );
+
+  assert.deepStrictEqual(work, {
+    indexedImports: width + 2,
+    declarationProbes: width,
+    matchedBindings: width + 2
+  }, `wide selective-import reachability exceeded one index step per import and one probe per declaration: ${JSON.stringify(work)}`);
+  assert.deepStrictEqual(matched.get('item_04200'), [
+    'local_item_04200', 'alias_a', 'alias_b'
+  ], `multiple aliases for one declaration target were lost or reordered: ${JSON.stringify(matched.get('item_04200'))}`);
+}
+
 async function scenarioSamePackage() {
   const root = makeWorkspace(true);
   const session = new Session(root);
@@ -123,6 +175,8 @@ async function scenarioSamePackage() {
     'completion disclosed another file\'s `private` declaration');
   assert.ok(!labels.includes('dep_unmarked'),
     'completion disclosed another file\'s unmarked declaration; an omitted modifier is private');
+  assert.ok(!labels.includes('dep_unlisted'),
+    'completion offered an accessible declaration that the caller did not selectively import');
 
   // The contrast the criterion asks for: the caller's own private helper stays
   // available in the caller's own editor session.
@@ -133,6 +187,89 @@ async function scenarioSamePackage() {
 
   await session.stop();
   return labels;
+}
+
+// Merely opening another file must not act as an implicit wildcard import.
+// The compiler diagnoses this prefix as unknown; completion and definition
+// must agree instead of offering names that successful resolution cannot use.
+async function scenarioNoImportIsNoReachability() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+  await session.open('demo/dep.kofun', DEPENDENCY);
+  const caller = [
+    'module demo.no_import', '',
+    'fn caller() -> Int {', '    return dep', '}', '',
+    'fn reaches_public() -> Int {', '    return dep_public(1)', '}', ''
+  ].join('\n');
+  const callerUri = await session.open('demo/no_import.kofun', caller);
+
+  const labels = await session.completionLabels(
+    callerUri, caller, DEP_PREFIX_LINE, DEP_PREFIX_COLUMN);
+  assert.deepStrictEqual(labels, [],
+    `opening a file without importing it acted as a wildcard import; completion offered ${JSON.stringify(labels)}`);
+  const definition = await session.definitionAt(
+    callerUri, caller, '    return dep_public(1)', 13);
+  assert.strictEqual(definition, null,
+    `definition reached a public declaration the caller did not import: ${JSON.stringify(definition)}`);
+
+  await session.stop();
+}
+
+async function scenarioSelectiveAlias() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+  const depUri = await session.open('demo/dep.kofun', DEPENDENCY);
+  const caller = [
+    'module demo.alias_caller',
+    'from demo.dep import dep_public as local_public, dep_private as local_private', '',
+    'fn caller() -> Int {', '    return local', '}', '',
+    'fn reaches_alias() -> Int {', '    return local_public(1)', '}', '',
+    'fn reaches_original() -> Int {', '    return dep_public(1)', '}', ''
+  ].join('\n');
+  const callerUri = await session.open('demo/alias_caller.kofun', caller);
+
+  const labels = await session.completionLabels(
+    callerUri, caller, '    return local', 16);
+  assert.deepStrictEqual(labels, ['local_public'],
+    `a selective alias did not preserve its local spelling and visibility: ${JSON.stringify(labels)}`);
+  const aliasDefinition = await session.definitionAt(
+    callerUri, caller, '    return local_public(1)', 15);
+  assert.ok(aliasDefinition && aliasDefinition.uri === depUri,
+    `definition on a selective alias did not reach its declaration: ${JSON.stringify(aliasDefinition)}`);
+  const originalDefinition = await session.definitionAt(
+    callerUri, caller, '    return dep_public(1)', 13);
+  assert.strictEqual(originalDefinition, null,
+    `an aliased import also exposed the declaration's original spelling: ${JSON.stringify(originalDefinition)}`);
+
+  await session.stop();
+}
+
+async function scenarioInvalidImportsFailClosed() {
+  const root = makeWorkspace(true);
+  const session = new Session(root);
+  await session.start();
+  await session.open('demo/dep.kofun', DEPENDENCY);
+  const cases = [
+    ['wrong-target', 'from demo.other import dep_public'],
+    ['wildcard', 'from demo.dep import *'],
+    ['malformed', 'from demo.dep import dep_public,, dep_internal'],
+    ['late', 'fn already_started() -> Int { return 0 }\nfrom demo.dep import dep_public']
+  ];
+  for (const [name, importLine] of cases) {
+    const caller = [
+      `module demo.${name.replace('-', '_')}`,
+      importLine, '',
+      'fn caller() -> Int {', '    return dep', '}', ''
+    ].join('\n');
+    const uri = await session.open(`demo/${name}.kofun`, caller);
+    const labels = await session.completionLabels(
+      uri, caller, DEP_PREFIX_LINE, DEP_PREFIX_COLUMN);
+    assert.deepStrictEqual(labels, [],
+      `${name} selective import widened the foreign visible set: ${JSON.stringify(labels)}`);
+  }
+  await session.stop();
 }
 
 async function scenarioAnonymousPackage() {
@@ -199,6 +336,8 @@ async function scenarioIdentityIsNotContent() {
   const session = new Session(root);
   await session.start();
   const twin = [
+    'module demo.twin',
+    'from demo.twin import twin_private', '',
     'private fn twin_private(value: Int) -> Int {', '    return value', '}', '',
     'fn twin_caller() -> Int {', '    return twin', '}', ''
   ].join('\n');
@@ -230,9 +369,14 @@ async function scenarioCollidingDisplayPaths() {
   await session.start();
 
   const secret = [
+    'module demo.collision', '',
     'private fn collide_private(value: Int) -> Int {', '    return value', '}', ''
   ].join('\n');
-  const prober = ['fn prober() -> Int {', '    return collide', '}', ''].join('\n');
+  const prober = [
+    'module demo.prober',
+    'from demo.collision import collide_private', '',
+    'fn prober() -> Int {', '    return collide', '}', ''
+  ].join('\n');
 
   // Same basename, different directories, both outside the workspace root.
   const leftUri = `file://${outsideLeft}/util.kofun`;
@@ -284,7 +428,13 @@ async function scenarioModifierPositionIsContextual() {
     const dep = `${header}\n\nfn hidden_${name.replace('-', '_')}(value: Int) -> Int {\n    return value\n}\n`;
     await session.open(`demo/dep_${name}.kofun`, dep);
   }
-  const probe = 'fn probe() -> Int {\n    return hidden\n}\n';
+  const probe = [
+    'module demo.probe',
+    'from demo.internal import hidden_module',
+    'from demo.pub import hidden_pub_segment',
+    'from demo.core import marked_visible', '',
+    'fn probe() -> Int {', '    return hidden', '}', ''
+  ].join('\n');
   const probeUri = await session.open('demo/probe.kofun', probe);
 
   const labels = await session.completionLabels(probeUri, probe, '    return hidden', 17);
@@ -313,14 +463,14 @@ async function scenarioPackageIdentityIsPerDocument() {
   const session = new Session(root);
   await session.start();
 
-  const foreign = 'internal fn neighbour_internal(value: Int) -> Int {\n    return value\n}\n';
+  const foreign = 'module neighbour.lib\n\ninternal fn neighbour_internal(value: Int) -> Int {\n    return value\n}\n';
   const neighbourUri = `file://${neighbour}/demo/lib.kofun`;
   session.client.send({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
     textDocument: { uri: neighbourUri, languageId: 'kofun', version: 1, text: foreign } } });
   await session.client.waitFor((m) => m.method === 'textDocument/publishDiagnostics' &&
     m.params.uri === neighbourUri && m.params.version === 1);
 
-  const probe = 'fn probe() -> Int {\n    return neighbour\n}\n';
+  const probe = 'module demo.probe\nfrom neighbour.lib import neighbour_internal\n\nfn probe() -> Int {\n    return neighbour\n}\n';
   const probeUri = await session.open('demo/probe.kofun', probe);
   const labels = await session.completionLabels(probeUri, probe, '    return neighbour', 20);
   assert.deepStrictEqual(labels, [],
@@ -328,7 +478,7 @@ async function scenarioPackageIdentityIsPerDocument() {
 
   // And the workspace's own internal API must not leak outward into an
   // anonymous buffer either.
-  const scratch = 'fn scratch() -> Int {\n    return probe\n}\n';
+  const scratch = 'module scratch.buffer\nfrom demo.probe import probe\n\nfn scratch() -> Int {\n    return probe\n}\n';
   const scratchUri = 'untitled:Untitled-7';
   session.client.send({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: {
     textDocument: { uri: scratchUri, languageId: 'kofun', version: 1, text: scratch } } });
@@ -349,8 +499,8 @@ async function scenarioDefinitionOnDeclarationStaysPut() {
   const root = makeWorkspace(true);
   const session = new Session(root);
   await session.start();
-  const dep = 'pub fn shared(value: Int) -> Int {\n    return value\n}\n';
-  const caller = 'fn probe(shared: Int) -> Int {\n    return shared\n}\n';
+  const dep = 'module demo.dep\n\npub fn shared(value: Int) -> Int {\n    return value\n}\n';
+  const caller = 'module demo.caller\nfrom demo.dep import shared\n\nfn probe(shared: Int) -> Int {\n    return shared\n}\n';
   const depUri = await session.open('demo/dep.kofun', dep);
   const callerUri = await session.open('demo/caller.kofun', caller);
 
@@ -369,7 +519,7 @@ async function scenarioPendingAnalysisIsIncomplete() {
   const root = makeWorkspace(true);
   const session = new Session(root);
   await session.start();
-  const caller = 'fn caller() -> Int {\n    return dep\n}\n';
+  const caller = 'module demo.pending\nfrom demo.dep import dep_public\n\nfn caller() -> Int {\n    return dep\n}\n';
   const callerUri = await session.open('demo/caller.kofun', caller);
 
   // Opened without awaiting its diagnostics, so it is still analysing.
@@ -420,8 +570,16 @@ async function scenarioDeterminism(expected) {
 }
 
 (async () => {
+  scenarioWideImportWorkIsLinear();
+  console.log('PASS visibility: 10k imports plus 10k declarations use linear indexed work and preserve aliases');
   const baseline = await scenarioSamePackage();
-  console.log('PASS visibility: inside one package, completion offers internal and public and hides private');
+  console.log('PASS visibility: selective imports expose internal and public and hide private and unlisted names');
+  await scenarioNoImportIsNoReachability();
+  console.log('PASS visibility: open documents without selective imports expose no foreign name or definition');
+  await scenarioSelectiveAlias();
+  console.log('PASS visibility: selective aliases expose only their accessible local spelling');
+  await scenarioInvalidImportsFailClosed();
+  console.log('PASS visibility: wrong-target, wildcard, malformed, and late imports fail closed');
   await scenarioAnonymousPackage();
   console.log('PASS visibility: without a manifest every file is an anonymous package and nothing crosses');
   await scenarioNavigationDoesNotDisclose();

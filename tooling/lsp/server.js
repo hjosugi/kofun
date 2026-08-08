@@ -11,6 +11,10 @@
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath } = require('url');
+const {
+  buildSelectiveImportTargetIndex,
+  forEachImportedDeclaration
+} = require('./import-target-index.js');
 const { accessible, declaredVisibility } = require('./visibility.js');
 
 const documents = new Map();
@@ -340,12 +344,117 @@ function firstOnItsLine(doc, token) {
   return doc.text.slice(before.end, token.start).includes('\n');
 }
 
+function validHeaderIdentifier(value) {
+  if (typeof value !== 'string' || value === '' || value.normalize('NFC') !== value) {
+    return false;
+  }
+  if (!isIdentifierStart(value.charCodeAt(0))) return false;
+  for (let at = 1; at < value.length; at += 1) {
+    if (!isIdentifierContinue(value.charCodeAt(at))) return false;
+  }
+  return true;
+}
+
+function modulePath(value) {
+  if (typeof value !== 'string' || value === '') return null;
+  const segments = value.split('.');
+  return segments.every(validHeaderIdentifier) ? segments.join('.') : null;
+}
+
+// The bounded syntactic information needed before a foreign declaration can
+// become a local name. Visibility answers whether a declaration *may* cross a
+// boundary; a selective import answers whether this caller actually bound it.
+// Keeping the two operands separate prevents an open editor buffer from acting
+// as an implicit wildcard import.
+//
+// This intentionally models only the unqualified surface the LSP already
+// offers. Qualified `module.member` completion is a separate capability. A
+// malformed, wildcard, duplicate, or late selective import therefore clears
+// the whole bounded table rather than widening the visible set by guessing.
+function topLevelHeaders(doc) {
+  const result = { modulePath: null, selectiveImports: new Map() };
+  let moduleSeen = false;
+  let importsValid = true;
+  let headerOpen = true;
+  let importSeen = false;
+
+  for (const rawLine of doc.text.split(/\r?\n/u)) {
+    const comment = rawLine.indexOf('#');
+    const line = (comment >= 0 ? rawLine.slice(0, comment) : rawLine).trim();
+    if (line === '') continue;
+    if (!headerOpen) {
+      if (line === 'module' || line.startsWith('module ') ||
+          line === 'import' || line.startsWith('import ') ||
+          line === 'from' || line.startsWith('from ')) importsValid = false;
+      continue;
+    }
+
+    if (line === 'module' || line.startsWith('module ')) {
+      const declared = line === 'module' ? null : modulePath(line.slice(7).trim());
+      if (moduleSeen || importSeen || declared === null) {
+        result.modulePath = null;
+        importsValid = false;
+      }
+      else result.modulePath = declared;
+      moduleSeen = true;
+      continue;
+    }
+
+    // Qualified imports are valid header rows, but they do not create an
+    // unqualified binding and so do not enter this table.
+    if (line === 'import' || line.startsWith('import ')) {
+      const words = line.split(/\s+/u);
+      const target = words.length > 1 ? modulePath(words[1]) : null;
+      const alias = words.length === 4 && words[2] === 'as' ? words[3] : null;
+      if (target === null || (words.length !== 2 &&
+          !(alias !== null && validHeaderIdentifier(alias)))) importsValid = false;
+      importSeen = true;
+      continue;
+    }
+
+    if (line === 'from' || line.startsWith('from ')) {
+      importSeen = true;
+      const parsed = /^from\s+(\S+)\s+import\s+(.+)$/u.exec(line);
+      const target = parsed ? modulePath(parsed[1]) : null;
+      const entries = parsed ? parsed[2].split(',') : [];
+      if (entries.length > 0 && entries[entries.length - 1].trim() === '') entries.pop();
+      if (target === null || entries.length === 0) {
+        importsValid = false;
+        continue;
+      }
+      for (const entry of entries) {
+        const words = entry.trim().split(/\s+/u);
+        const imported = words[0];
+        const local = words.length === 1 ? imported
+          : words.length === 3 && words[1] === 'as' ? words[2] : null;
+        if (!validHeaderIdentifier(imported) || !validHeaderIdentifier(local) ||
+            result.selectiveImports.has(local)) {
+          importsValid = false;
+          continue;
+        }
+        result.selectiveImports.set(local, {
+          modulePath: target, importedName: imported, localName: local
+        });
+      }
+      continue;
+    }
+
+    headerOpen = false;
+  }
+
+  if (!importsValid) result.selectiveImports.clear();
+  return result;
+}
+
 function buildIndex(doc) {
   const scanned = tokenize(doc);
   doc.tokens = scanned.tokens;
   doc.diagnostics = scanned.diagnostics;
   doc.symbols = [];
   doc.declarations = new Set();
+  const headers = topLevelHeaders(doc);
+  doc.modulePath = headers.modulePath;
+  doc.selectiveImports = headers.selectiveImports;
   const tokens = doc.tokens;
 
   function addSymbol(symbol) {
@@ -643,9 +752,10 @@ function visibleSymbols(doc, offset) {
 //
 // The session's open documents are the bounded workspace view: no directory
 // walk, no filesystem read, and nothing a closed file can inject. Every
-// candidate goes through `accessible` with caller context built from transport
-// state, so the default — a declaration with no modifier, which the spec makes
-// private — never leaves its own file.
+// candidate must first match a selective import owned by the caller and then
+// go through `accessible` with caller context built from transport state, so an
+// open file never acts as an implicit wildcard import and private declarations
+// never leave their own file.
 //
 // Ordering is by logical path and then by declaration offset, both of which are
 // properties of the source rather than of the session. Iterating `documents`
@@ -653,7 +763,18 @@ function visibleSymbols(doc, offset) {
 // differently depending on which file the editor happened to restore first.
 function reachableForeignSymbols(doc) {
   const caller = callerContext(doc);
+  const callerIndex = completionIndex(doc);
+  const imports = callerIndex && callerIndex.selectiveImports instanceof Map
+    ? [...callerIndex.selectiveImports.values()]
+    : [];
   const found = new Map();
+  if (imports.length === 0) return found;
+  // Key the caller's imports by their declaration target once. One target may
+  // have several local aliases, so each value is an insertion-ordered array;
+  // source order is stable and avoids a second sort. The document walk below
+  // then performs one lookup per declaration instead of comparing every
+  // declaration with every import.
+  const importTargets = buildSelectiveImportTargetIndex(imports);
   // Sorted by display path first so the order is the one a reader would
   // predict, then by URI so it is *total* — `logicalPath` is not injective, and
   // a comparator that returns 0 for two different documents would leave their
@@ -677,17 +798,30 @@ function reachableForeignSymbols(doc) {
     if (other.analysisState !== 'semantic' &&
         other.analysisState !== 'syntactic-fallback') continue;
     const index = completionIndex(other);
-    if (!index || !Array.isArray(index.symbols)) continue;
+    if (!index || !Array.isArray(index.symbols) ||
+        typeof index.modulePath !== 'string') continue;
     const declarations = index.symbols
       .filter((symbol) => symbol.kind === 'function' || symbol.kind === 'type')
       .sort((left, right) => left.start - right.start);
-    for (const symbol of declarations) {
-      if (!accessible(declarationContext(other, symbol), caller)) continue;
-      // A name the caller's own file declares always wins: its own private
-      // helper is not shadowed by a public one imported from elsewhere, and
-      // completion must offer the declaration that definition would reach.
-      if (!found.has(symbol.name)) found.set(symbol.name, { symbol, doc: other });
-    }
+    forEachImportedDeclaration(
+      importTargets,
+      index.modulePath,
+      declarations,
+      (symbol, bindings) => {
+        if (!accessible(declarationContext(other, symbol), caller)) return;
+        for (const binding of bindings) {
+          // A name the caller's own file declares always wins: its own private
+          // helper is not shadowed by a public one imported from elsewhere,
+          // and completion must offer the declaration that definition would
+          // reach.
+          if (!found.has(binding.localName)) {
+            found.set(binding.localName, {
+              localName: binding.localName, symbol, doc: other
+            });
+          }
+        }
+      }
+    );
   }
   return found;
 }
@@ -812,7 +946,8 @@ function completionItems(doc, offset, facts, owner) {
   // filled up on local declarations must not silently drop the foreign ones
   // without the client being told the list is incomplete.
   if (!truncated && owner) {
-    for (const { symbol, doc: origin } of reachableForeignSymbols(owner).values()) {
+    for (const { localName, symbol, doc: origin } of
+      reachableForeignSymbols(owner).values()) {
       if (declarations.length >= MAX_COMPLETION_ITEMS - reserved) {
         truncated = true;
         break;
@@ -822,7 +957,7 @@ function completionItems(doc, offset, facts, owner) {
       // already allowed to reach this declaration, or it would not be here.
       const detail = `${symbol.type}  (${origin.logicalPath})`;
       const group = symbol.kind === 'function' ? '2' : '3';
-      const value = item(symbol.name, COMPLETION_KIND[symbol.kind] ?? 6, detail, group,
+      const value = item(localName, COMPLETION_KIND[symbol.kind] ?? 6, detail, group,
         'cross-file-visible');
       if (value) declarations.push(value);
     }
