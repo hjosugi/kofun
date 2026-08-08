@@ -45,7 +45,7 @@ suite (see [`tooling/kotest/README.md`](../tooling/kotest/README.md)), run by
 | `lambdas.kofun` | owned | `tests/conformance/syntax/issues_35_47/run.sh` |
 | `lawful_list_monad.kofun` | illustrative | `E2S02` |
 | `native_answer.kofun` | runs | `native_answer.expected` |
-| `null_and_else_if.kofun` | illustrative | `E2S147` |
+| `null_and_else_if.kofun` | illustrative | `E2S12` |
 | `ownership.kofun` | illustrative | `E2S15` |
 | `pipeline.kofun` | illustrative | `E2S16` |
 | `project/src/bench.kofun` | runs | `project/src/bench.expected` |
@@ -101,7 +101,7 @@ Stage 2 Core path states for itself:
 | `broken_list_monad.kofun`, `lawful_list_monad.kofun`, `proven_optional_bool_monad.kofun` | `law` declarations (DD-035) are not a Stage 2 Core top-level form |
 | `ownership.kofun` | `read`/`take`/`own` parameter modes (DD-005, DD-006) parse, but the general ownership pass is open |
 | `coding_interview.kofun` | `List[Int]` parameters are outside the Core parameter set, which `E2S15` states directly in parameter position |
-| `null_and_else_if.kofun` | `Int?` construction and narrowing lower to Core, but `??` coalescing does not; #314 owns it |
+| `null_and_else_if.kofun` | `Int?` construction and `??` coalescing lower to Core; the Text-valued `return if ... else if ...` remains outside Stage 2 value-return lowering and stops at `E2S12` |
 | `pipeline.kofun` | `|>` is accepted design (DD-011); `map`, `filter`, and `sum` are not Core functions |
 | `science.kofun` | `linspace` and the numeric surface it uses are not Core functions |
 
