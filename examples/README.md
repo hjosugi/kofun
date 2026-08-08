@@ -46,7 +46,7 @@ suite (see [`tooling/kotest/README.md`](../tooling/kotest/README.md)), run by
 | `lawful_list_monad.kofun` | illustrative | `E2S02` |
 | `native_answer.kofun` | runs | `native_answer.expected` |
 | `null_and_else_if.kofun` | illustrative | `E2S147` |
-| `ownership.kofun` | illustrative | `E2S35` |
+| `ownership.kofun` | illustrative | `E2S15` |
 | `pipeline.kofun` | illustrative | `E2S16` |
 | `project/src/bench.kofun` | runs | `project/src/bench.expected` |
 | `project/src/main.kofun` | owned | `spec/package-roots/check.sh` |

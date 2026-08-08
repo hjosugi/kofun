@@ -67,7 +67,7 @@ canonical_status=$?
 set -e
 [ "$canonical_status" -ne 0 ] ||
     fail 'canonical Tuple source unexpectedly claimed executable codegen'
-grep -Fq 'error[E2S35]: unknown lexical binding `pair`' \
+grep -Fq 'error[E2S35]: malformed parameter head at byte 391' \
     "$work/canonical.check.stderr" ||
     fail 'canonical API did not expose the documented compiler boundary'
 

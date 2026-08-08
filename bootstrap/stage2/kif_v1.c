@@ -23,11 +23,11 @@
 #define O_NOFOLLOW 0
 #endif
 
-#define KIF_MAJOR 1u
-#define KIF_MINOR 1u
+#define KIF_MAJOR 2u
+#define KIF_MINOR 0u
 #define KIF_HEADER_BYTES 12u
-#define KIF_SCHEMA "kofun.interface/v1"
-#define KIF_COMPATIBILITY "semantic-compatibility-1"
+#define KIF_SCHEMA "kofun.interface/v2"
+#define KIF_COMPATIBILITY "semantic-compatibility-2"
 
 enum {
     TAG_SCHEMA = 0x8001u,
@@ -249,6 +249,15 @@ static const uint8_t *parameter_type_symbol_id(
     return fact->parameter_type_symbol_ids + index * KOFUN_KIF_ID_BYTES;
 }
 
+static const KofunKifParameterLabel *parameter_label(
+    const KofunKifFact *fact,
+    size_t index
+) {
+    static const KofunKifParameterLabel unlabelled = { NULL, 0u };
+    if (fact->parameter_labels == NULL) return &unlabelled;
+    return &fact->parameter_labels[index];
+}
+
 static KofunKifTypeTag type_tag_for_symbol_id(
     const uint8_t symbol_id[KOFUN_KIF_ID_BYTES]
 ) {
@@ -449,7 +458,7 @@ const char *kofun_kif_status_name(KofunKifStatus status) {
 
 static const char *status_message(KofunKifStatus status) {
     switch (status) {
-        case KOFUN_KIF_OK: return "validated KIF v1";
+        case KOFUN_KIF_OK: return "validated KIF v2";
         case KOFUN_KIF_UNSUPPORTED_SCHEMA: return "unsupported KIF schema; rebuild from source";
         case KOFUN_KIF_CORRUPT: return "corrupt KIF envelope; rebuild from source";
         case KOFUN_KIF_NONCANONICAL: return "noncanonical KIF facts; rebuild from source";
@@ -460,6 +469,19 @@ static const char *status_message(KofunKifStatus status) {
         case KOFUN_KIF_VISIBILITY_LEAK: return "public KIF fact exposes a hidden semantic dependency";
     }
     return "KIF internal invariant failed";
+}
+
+static bool parameter_labels_are_canonical(const KofunKifFact *fact) {
+    size_t index;
+    for (index = 0u; index < fact->parameter_count; index += 1u) {
+        const KofunKifParameterLabel *label = parameter_label(fact, index);
+        if (label->bytes == NULL) {
+            if (label->length != 0u) return false;
+        } else if (!canonical_identifier(label->bytes, label->length)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static KofunKifStatus validate_fact(
@@ -551,6 +573,7 @@ static KofunKifStatus validate_fact(
     switch (fact->kind) {
         case KOFUN_KIF_FACT_FUNCTION:
             if (fact->parameter_count > 256u ||
+                !parameter_labels_are_canonical(fact) ||
                 (fact->result_type != KOFUN_KIF_TYPE_INT &&
                  fact->result_type != KOFUN_KIF_TYPE_NOMINAL) ||
                 (fact->result_type == KOFUN_KIF_TYPE_INT ?
@@ -565,6 +588,7 @@ static KofunKifStatus validate_fact(
             if (fact->parameter_count != 0u || fact->constructor_payload_count != 0u ||
                 fact->result_type != 0 ||
                 fact->parameter_type_symbol_ids != NULL ||
+                fact->parameter_labels != NULL ||
                 id_is_nonzero(fact->result_type_symbol_id) ||
                 id_is_nonzero(fact->constructor_payload_type_symbol_id)) {
                 return KOFUN_KIF_NONCANONICAL;
@@ -573,6 +597,7 @@ static KofunKifStatus validate_fact(
         case KOFUN_KIF_FACT_CONSTRUCTOR:
             if (fact->parameter_count != 0u || fact->result_type != 0 ||
                 fact->parameter_type_symbol_ids != NULL ||
+                fact->parameter_labels != NULL ||
                 id_is_nonzero(fact->result_type_symbol_id) ||
                 fact->constructor_payload_count > 1u ||
                 (fact->constructor_payload_count == 0u &&
@@ -589,6 +614,7 @@ static KofunKifStatus validate_fact(
             }
             if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION) {
                 if (fact->parameter_count > 256u ||
+                    !parameter_labels_are_canonical(fact) ||
                     fact->result_type != KOFUN_KIF_TYPE_INT ||
                     id_is_nonzero(fact->result_type_symbol_id)) {
                     return KOFUN_KIF_NONCANONICAL;
@@ -604,7 +630,8 @@ static KofunKifStatus validate_fact(
                         }
                     }
                 }
-            } else if (fact->parameter_count != 0u || fact->result_type != 0) {
+            } else if (fact->parameter_count != 0u || fact->result_type != 0 ||
+                       fact->parameter_labels != NULL) {
                 return KOFUN_KIF_NONCANONICAL;
             }
             if (fact->export_target_kind == KOFUN_KIF_EXPORT_TARGET_CONSTRUCTOR) {
@@ -845,6 +872,17 @@ static bool encode_type_reference(
         buffer_append(signature, symbol_id, KOFUN_KIF_ID_BYTES);
 }
 
+static bool encode_parameter_label(
+    ByteBuffer *signature,
+    const KofunKifParameterLabel *label
+) {
+    uint8_t marker = label->bytes == NULL ? 0u : 1u;
+    if (!buffer_append(signature, &marker, 1u)) return false;
+    return marker == 0u ||
+        (buffer_u16(signature, label->length) &&
+         buffer_append(signature, label->bytes, label->length));
+}
+
 static bool encode_signature(const KofunKifFact *fact, ByteBuffer *signature) {
     uint8_t tag;
     size_t index;
@@ -856,7 +894,10 @@ static bool encode_signature(const KofunKifFact *fact, ByteBuffer *signature) {
             for (index = 0u; index < fact->parameter_count; index += 1u) {
                 if (!encode_type_reference(
                         signature,
-                        parameter_type_symbol_id(fact, index))) {
+                        parameter_type_symbol_id(fact, index)) ||
+                    !encode_parameter_label(
+                        signature,
+                        parameter_label(fact, index))) {
                     return false;
                 }
             }
@@ -884,7 +925,10 @@ static bool encode_signature(const KofunKifFact *fact, ByteBuffer *signature) {
                 if (!buffer_u16(signature, fact->parameter_count)) return false;
                 tag = KOFUN_KIF_TYPE_INT;
                 for (index = 0u; index < fact->parameter_count; index += 1u) {
-                    if (!buffer_append(signature, &tag, 1u)) return false;
+                    if (!buffer_append(signature, &tag, 1u) ||
+                        !encode_parameter_label(
+                            signature,
+                            parameter_label(fact, index))) return false;
                 }
                 return buffer_append(signature, &tag, 1u);
             }
@@ -1079,9 +1123,9 @@ static KofunKifStatus encode_interface(
     status = build_digest_views(interface, &public_vector, &internal_vector,
         &public_view, &internal_view);
     if (status != KOFUN_KIF_OK) goto done;
-    framed_hash("kofun.digest.public-semantic/v1", public_view.bytes,
+    framed_hash("kofun.digest.public-semantic/v2", public_view.bytes,
         public_view.length, public_digest);
-    framed_hash("kofun.digest.package-internal/v1", internal_view.bytes,
+    framed_hash("kofun.digest.package-internal/v2", internal_view.bytes,
         internal_view.length, internal_digest);
     if (!buffer_append(&payload, public_view.bytes, public_view.length) ||
         !buffer_field(&payload, TAG_INTERNAL_FACTS, internal_vector.bytes, internal_vector.length) ||
@@ -1218,6 +1262,37 @@ static KofunKifStatus parse_type_reference(
     return KOFUN_KIF_OK;
 }
 
+static KofunKifStatus parse_parameter_label(
+    ByteView signature,
+    size_t *cursor,
+    KofunKifParameterLabel *label
+) {
+    uint8_t marker;
+    uint16_t length;
+    if (*cursor >= signature.length) return KOFUN_KIF_CORRUPT;
+    marker = signature.bytes[(*cursor)++];
+    if (marker == 0u) return KOFUN_KIF_OK;
+    if (marker != 1u || signature.length - *cursor < 2u) {
+        return KOFUN_KIF_NONCANONICAL;
+    }
+    length = load_u16be(signature.bytes + *cursor);
+    *cursor += 2u;
+    if (length == 0u || length > KOFUN_KIF_MAX_NAME_BYTES ||
+        signature.length - *cursor < length ||
+        !canonical_identifier(
+            (const char *)signature.bytes + *cursor,
+            length)) {
+        return KOFUN_KIF_NONCANONICAL;
+    }
+    label->bytes = malloc((size_t)length + 1u);
+    if (label->bytes == NULL) return KOFUN_KIF_INTERNAL_INVARIANT;
+    memcpy(label->bytes, signature.bytes + *cursor, length);
+    label->bytes[length] = '\0';
+    label->length = length;
+    *cursor += length;
+    return KOFUN_KIF_OK;
+}
+
 static KofunKifStatus parse_signature(ByteView signature, KofunKifFact *fact) {
     size_t cursor = 0u;
     size_t index;
@@ -1236,7 +1311,10 @@ static KofunKifStatus parse_signature(ByteView signature, KofunKifFact *fact) {
         if (count != 0u) {
             fact->parameter_type_symbol_ids = calloc(
                 count, KOFUN_KIF_ID_BYTES);
-            if (fact->parameter_type_symbol_ids == NULL) {
+            fact->parameter_labels = calloc(
+                count, sizeof(*fact->parameter_labels));
+            if (fact->parameter_type_symbol_ids == NULL ||
+                fact->parameter_labels == NULL) {
                 return KOFUN_KIF_INTERNAL_INVARIANT;
             }
         }
@@ -1247,6 +1325,12 @@ static KofunKifStatus parse_signature(ByteView signature, KofunKifFact *fact) {
                 fact->parameter_type_symbol_ids +
                     index * KOFUN_KIF_ID_BYTES,
                 &parameter_type);
+            if (status != KOFUN_KIF_OK) return status;
+            status = parse_parameter_label(
+                signature,
+                &cursor,
+                &fact->parameter_labels[index]
+            );
             if (status != KOFUN_KIF_OK) return status;
         }
         status = parse_type_reference(
@@ -1290,15 +1374,32 @@ static KofunKifStatus parse_signature(ByteView signature, KofunKifFact *fact) {
             if (signature.length < 5u) return KOFUN_KIF_NONCANONICAL;
             count = load_u16be(signature.bytes + cursor);
             cursor += 2u;
-            if (count > 256u || signature.length != 5u + count) {
+            if (count > 256u) {
                 return KOFUN_KIF_NONCANONICAL;
             }
-            for (index = 0u; index < count; index += 1u) {
-                if (signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
-                    return KOFUN_KIF_NONCANONICAL;
+            if (count != 0u) {
+                fact->parameter_labels = calloc(
+                    count, sizeof(*fact->parameter_labels));
+                if (fact->parameter_labels == NULL) {
+                    return KOFUN_KIF_INTERNAL_INVARIANT;
                 }
             }
-            if (signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
+            for (index = 0u; index < count; index += 1u) {
+                if (cursor >= signature.length ||
+                    signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
+                    return KOFUN_KIF_NONCANONICAL;
+                }
+                {
+                    KofunKifStatus status = parse_parameter_label(
+                        signature,
+                        &cursor,
+                        &fact->parameter_labels[index]
+                    );
+                    if (status != KOFUN_KIF_OK) return status;
+                }
+            }
+            if (cursor >= signature.length ||
+                signature.bytes[cursor++] != KOFUN_KIF_TYPE_INT) {
                 return KOFUN_KIF_NONCANONICAL;
             }
             fact->parameter_count = count;
@@ -1453,8 +1554,16 @@ static void destroy_fact_array(KofunKifFact *facts, size_t count) {
     size_t index;
     if (facts == NULL) return;
     for (index = 0u; index < count; index += 1u) {
+        size_t parameter_index;
         free(facts[index].name);
         free(facts[index].parameter_type_symbol_ids);
+        for (parameter_index = 0u;
+             parameter_index < facts[index].parameter_count &&
+             facts[index].parameter_labels != NULL;
+             parameter_index += 1u) {
+            free(facts[index].parameter_labels[parameter_index].bytes);
+        }
+        free(facts[index].parameter_labels);
         free(facts[index].export_target_module_path);
         free(facts[index].export_chain_ids);
     }
@@ -1537,9 +1646,9 @@ static KofunKifStatus recompute_claimed_digests(
         status = internal_view.status;
         goto done;
     }
-    framed_hash("kofun.digest.public-semantic/v1", public_view.bytes,
+    framed_hash("kofun.digest.public-semantic/v2", public_view.bytes,
         public_view.length, public_digest);
-    framed_hash("kofun.digest.package-internal/v1", internal_view.bytes,
+    framed_hash("kofun.digest.package-internal/v2", internal_view.bytes,
         internal_view.length, internal_digest);
 done:
     buffer_destroy(&public_view);

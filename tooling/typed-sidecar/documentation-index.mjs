@@ -121,6 +121,11 @@ function requireTypeReference(value, where) {
   fail("TDI03", `${where} is not a supported KIF type reference`, "invalid-visibility-projection");
 }
 
+function requireParameterLabel(value, where, limits) {
+  if (value === "unlabelled") return value;
+  return requireName(value, where, limits);
+}
+
 function requireInteger(value, where, maximum = 0xffff_ffff) {
   if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
     fail("TDI03", `${where} is outside its bounded integer range`, "invalid-visibility-projection");
@@ -143,13 +148,21 @@ function configuredLimits(overrides = {}) {
   return Object.freeze(result);
 }
 
-function functionSignature(fact, where) {
+function functionSignature(fact, where, limits) {
   const parameters = fact.parameter_types;
+  const parameterLabels = fact.parameter_labels;
   if (!Array.isArray(parameters) || parameters.length !== fact.parameter_count ||
       parameters.length > 256) {
     fail("TDI03", `${where}.parameter_types does not match parameter_count`, "invalid-visibility-projection");
   }
+  if (!Array.isArray(parameterLabels) ||
+      parameterLabels.length !== fact.parameter_count ||
+      parameterLabels.length > 256) {
+    fail("TDI03", `${where}.parameter_labels does not match parameter_count`, "invalid-visibility-projection");
+  }
   return Object.freeze({
+    parameter_labels: Object.freeze(parameterLabels.map((value, index) =>
+      requireParameterLabel(value, `${where}.parameter_labels[${index}]`, limits))),
     parameters: Object.freeze(parameters.map((value, index) =>
       requireTypeReference(value, `${where}.parameter_types[${index}]`))),
     result: requireTypeReference(fact.result, `${where}.result`),
@@ -196,7 +209,7 @@ function validateVisibilityFact(value, index, limits) {
       "target_module_id", "target_module_path", "target_owner_symbol_id",
       "target_symbol_id",
     ],
-    function: ["parameter_count", "parameter_types", "result"],
+    function: ["parameter_count", "parameter_labels", "parameter_types", "result"],
   };
   if (!(kind in optionalByKind)) {
     fail("TDI03", `${where}.kind is not supported`, "invalid-visibility-projection");
@@ -211,7 +224,7 @@ function validateVisibilityFact(value, index, limits) {
   let signature = null;
   if (kind === "function") {
     requireInteger(fact.parameter_count, `${where}.parameter_count`, 256);
-    signature = functionSignature(fact, where);
+    signature = functionSignature(fact, where, limits);
   } else if (kind === "constructor") {
     requireInteger(fact.payload_count, `${where}.payload_count`, 1);
     signature = constructorSignature(fact, where);
@@ -530,12 +543,24 @@ function validateIndexBytes(bytes, limits) {
       fail("TDI05", `${where}.signature does not match its declaration kind`, "invalid-old");
     }
     if (entry.kind === "function") {
-      exactObject(entry.signature, `${where}.signature`, ["parameters", "result"]);
+      exactObject(entry.signature, `${where}.signature`, [
+        "parameter_labels", "parameters", "result",
+      ]);
       if (!Array.isArray(entry.signature.parameters) || entry.signature.parameters.length > 256) {
         fail("TDI05", `${where}.signature.parameters is invalid`, "invalid-old");
       }
+      if (!Array.isArray(entry.signature.parameter_labels) ||
+          entry.signature.parameter_labels.length !== entry.signature.parameters.length) {
+        fail("TDI05", `${where}.signature.parameter_labels is invalid`, "invalid-old");
+      }
       entry.signature.parameters.forEach((item, itemIndex) =>
         requireTypeReference(item, `${where}.signature.parameters[${itemIndex}]`));
+      entry.signature.parameter_labels.forEach((item, itemIndex) =>
+        requireParameterLabel(
+          item,
+          `${where}.signature.parameter_labels[${itemIndex}]`,
+          limits,
+        ));
       requireTypeReference(entry.signature.result, `${where}.signature.result`);
     } else if (entry.kind === "constructor") {
       exactObject(entry.signature, `${where}.signature`, ["ordinal", "owner_symbol_id", "payload"]);

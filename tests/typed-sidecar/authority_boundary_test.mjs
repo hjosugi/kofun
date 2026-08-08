@@ -27,6 +27,7 @@ function functionFact(symbolId, visibility, name) {
     name,
     namespace_id: "3".repeat(64),
     parameter_count: 0,
+    parameter_labels: [],
     parameter_types: [],
     result: "Int",
     symbol_id: symbolId,

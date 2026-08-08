@@ -340,7 +340,7 @@ identity preservation, ordering, chain boundaries, cycle ordering, and
 transaction language. The bounded resolver checkpoint in
 `bootstrap/stage2/re_exports.c` now resolves both accepted forms through the
 committed #113/#114 import identities, emits source-located HIR, publishes
-public export facts through the defensive KIF v1 codec, and emits a
+public export facts through the defensive KIF v2 codec, and emits a
 facade/canonical tooling projection. Its focused gate is
 `tests/conformance/modules/re-exports/run.sh`.
 

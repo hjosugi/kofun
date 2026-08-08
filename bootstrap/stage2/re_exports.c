@@ -58,6 +58,7 @@ typedef struct {
     uint8_t chain_ids[RE_EXPORT_CHAIN_LIMIT][32];
     size_t chain_count;
     uint16_t parameter_count;
+    KofunKifParameterLabel *parameter_labels;
     uint8_t constructor_payload_count;
     uint8_t target_owner_symbol_id[32];
     uint32_t target_constructor_ordinal;
@@ -596,7 +597,8 @@ static bool validate_export_function_signature(
     const Declaration *target,
     size_t request_start,
     size_t request_end,
-    uint16_t *parameter_count
+    uint16_t *parameter_count,
+    KofunKifParameterLabel **parameter_labels
 ) {
     Program *program = &resolver->imports.qualified.program;
     const Module *module = &program->modules[target->module_index];
@@ -621,12 +623,23 @@ static bool validate_export_function_signature(
     cursor = name + 2u;
     while (cursor < close) {
         Token *type;
-        if (cursor + 2u >= close) {
+        size_t internal = cursor;
+        size_t type_index = cursor + 2u;
+        bool labelled = cursor + 3u < close &&
+            module->tokens[cursor].kind == TOKEN_IDENTIFIER &&
+            module->tokens[cursor + 1u].kind == TOKEN_IDENTIFIER &&
+            punctuation_equals(module, &module->tokens[cursor + 2u], ':');
+        if (labelled) {
+            internal = cursor + 1u;
+            type_index = cursor + 3u;
+        }
+        if (type_index >= close ||
+            !punctuation_equals(module, &module->tokens[internal + 1u], ':')) {
             set_error(program, "E2S94",
                 "re-export parameter token invariant failed");
             return false;
         }
-        type = &module->tokens[cursor + 2u];
+        type = &module->tokens[type_index];
         if (!token_equals(module, type, "Int")) {
             set_error(program, "E2S87",
                 "public re-export `%s` in `%s` at bytes %zu..%zu exposes hidden/incompatible parameter type at target bytes %zu..%zu; requested=pub effective=private; hint: expose a public supported signature",
@@ -634,8 +647,27 @@ static bool validate_export_function_signature(
                 request_start, request_end, type->start, type->end);
             return false;
         }
+        {
+            KofunKifParameterLabel *labels = realloc(
+                *parameter_labels,
+                ((size_t)count + 1u) * sizeof(**parameter_labels)
+            );
+            if (labels == NULL) {
+                set_error(program, "E2S94",
+                    "re-export parameter-label allocation failed");
+                return false;
+            }
+            *parameter_labels = labels;
+            memset(&labels[count], 0, sizeof(labels[count]));
+            if (labelled) {
+                const Token *external = &module->tokens[cursor];
+                labels[count].bytes = module->source + external->start;
+                labels[count].length =
+                    (uint16_t)(external->end - external->start);
+            }
+        }
         count += 1u;
-        cursor += 3u;
+        cursor = type_index + 1u;
         if (cursor < close) cursor += 1u;
     }
     if (close + 2u >= module->token_count ||
@@ -820,6 +852,7 @@ static bool append_export(
     size_t target_declaration_index,
     const uint8_t target_symbol_id[32],
     uint16_t parameter_count,
+    const KofunKifParameterLabel *parameter_labels,
     uint8_t constructor_payload_count,
     const uint8_t target_owner_symbol_id[32],
     uint32_t target_constructor_ordinal,
@@ -852,6 +885,24 @@ static bool append_export(
     result->namespace_tag = namespace_tag;
     result->target_kind = target_kind;
     result->parameter_count = parameter_count;
+    if (parameter_count != 0u) {
+        result->parameter_labels = calloc(
+            parameter_count,
+            sizeof(*result->parameter_labels)
+        );
+        if (result->parameter_labels == NULL) {
+            set_error(program, "E2S94",
+                "re-export parameter-label projection failed");
+            return false;
+        }
+        if (parameter_labels != NULL) {
+            memcpy(
+                result->parameter_labels,
+                parameter_labels,
+                (size_t)parameter_count * sizeof(*result->parameter_labels)
+            );
+        }
+    }
     result->constructor_payload_count = constructor_payload_count;
     if (target_owner_symbol_id != NULL) {
         memcpy(result->target_owner_symbol_id, target_owner_symbol_id, 32u);
@@ -941,7 +992,7 @@ static bool resolve_qualified_request(
     if (!append_export(resolver, request->declaration_index,
             dependency->qualifier, name_span.start, name_span.end, 2u,
             KOFUN_KIF_EXPORT_TARGET_MODULE, dependency->target_index,
-            SIZE_MAX, target_symbol, 0u, 0u, NULL, 0u,
+            SIZE_MAX, target_symbol, 0u, NULL, 0u, NULL, 0u,
             access.proof, NULL)) return false;
     request->resolved_namespaces = (uint8_t)(1u << 2u);
     request->resolved = true;
@@ -968,6 +1019,7 @@ static bool append_direct_declaration_exports(
          target_index += 1u) {
         Declaration *target = &program->declarations[target_index];
         uint16_t parameter_count = 0u;
+        KofunKifParameterLabel *parameter_labels = NULL;
         KofunAccessResult access;
         if (target->module_index != dependency->target_index ||
             (target->kind != DECLARATION_FUNCTION &&
@@ -1000,7 +1052,11 @@ static bool append_direct_declaration_exports(
         }
         if (target->kind == DECLARATION_FUNCTION &&
             !validate_export_function_signature(resolver, target,
-                name->start, name->end, &parameter_count)) return false;
+                name->start, name->end, &parameter_count,
+                &parameter_labels)) {
+            free(parameter_labels);
+            return false;
+        }
         {
             uint8_t payload_count = 0u;
             const uint8_t *owner_symbol = NULL;
@@ -1039,8 +1095,12 @@ static bool append_direct_declaration_exports(
                 name->spelling, name->start, name->end,
                 target->namespace_tag, export_target_kind(target->kind),
                 target->module_index, target_index, target->symbol_id,
-                parameter_count, payload_count, owner_symbol,
-                constructor_ordinal, access.proof, NULL)) return false;
+                parameter_count, parameter_labels, payload_count, owner_symbol,
+                constructor_ordinal, access.proof, NULL)) {
+                free(parameter_labels);
+                return false;
+            }
+            free(parameter_labels);
             request->resolved_namespaces |=
                 (uint8_t)(1u << target->namespace_tag);
         }
@@ -1084,7 +1144,7 @@ static bool append_forwarded_exports(
                 target->target_module_index,
                 target->target_declaration_index,
                 target->target_symbol_id, target->parameter_count,
-                target->constructor_payload_count,
+                target->parameter_labels, target->constructor_payload_count,
                 target->target_owner_symbol_id,
                 target->target_constructor_ordinal,
                 target->access_proof, target)) return false;
@@ -1755,7 +1815,8 @@ static bool project_local_interface_fact(
     if (declaration->kind == DECLARATION_FUNCTION) {
         if (!validate_export_function_signature(resolver, declaration,
                 declaration->name_start, declaration->name_end,
-                &fact->parameter_count)) return false;
+                &fact->parameter_count,
+                &fact->parameter_labels)) return false;
         fact->result_type = KOFUN_KIF_TYPE_INT;
     } else if (declaration->kind == DECLARATION_CONSTRUCTOR) {
         if (!declaration->has_owner ||
@@ -1869,6 +1930,7 @@ static bool build_facade_interface(
                 strlen(fact->export_target_module_path);
         }
         fact->parameter_count = export->parameter_count;
+        fact->parameter_labels = export->parameter_labels;
         fact->constructor_payload_count =
             export->constructor_payload_count;
         if (export->target_kind == KOFUN_KIF_EXPORT_TARGET_FUNCTION) {
@@ -1887,12 +1949,27 @@ static bool build_facade_interface(
 }
 
 static void destroy_facade_interface(KofunKifInterface *interface) {
+    size_t index;
+    for (index = 0u; index < interface->public_fact_count; index += 1u) {
+        if (interface->public_facts[index].kind == KOFUN_KIF_FACT_FUNCTION) {
+            free(interface->public_facts[index].parameter_labels);
+        }
+    }
+    for (index = 0u; index < interface->internal_fact_count; index += 1u) {
+        if (interface->internal_facts[index].kind == KOFUN_KIF_FACT_FUNCTION) {
+            free(interface->internal_facts[index].parameter_labels);
+        }
+    }
     free(interface->public_facts);
     free(interface->internal_facts);
     memset(interface, 0, sizeof(*interface));
 }
 
 static void destroy_re_export_resolver(ReExportResolver *resolver) {
+    size_t index;
+    for (index = 0u; index < resolver->export_count; index += 1u) {
+        free(resolver->exports[index].parameter_labels);
+    }
     free(resolver->declarations);
     free(resolver->requests);
     free(resolver->exports);

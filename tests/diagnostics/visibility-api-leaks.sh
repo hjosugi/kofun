@@ -68,7 +68,7 @@ do
     status=$?
     set -e
     test "$status" -eq 3 || fail "$fixture status is $status, expected 3"
-    grep -F 'EKI02: KIF v1 does not support' "$WORK/$fixture.stderr" >/dev/null ||
+    grep -F 'EKI02: KIF v2 does not support' "$WORK/$fixture.stderr" >/dev/null ||
         fail "$fixture was not refused explicitly"
     test ! -s "$WORK/$fixture.stdout" ||
         fail "$fixture reported a misleading language success"

@@ -2334,14 +2334,7 @@ fn reserved_type_name(name: Text) -> Bool {
     name == "Unit" || name == "Text" || name == "List" || name == "_"
 }
 
-# The call-arguments v1 surface boundary (#880). The mirror of
-# `validate_call_argument_surface` in bootstrap/stage2/compiler.c, and it is
-# here for the reason the issue's last acceptance criterion is plural:
-# *profiles* that cannot lower the new form must reject it. A refusal that
-# existed only in the C profile would leave the self-hosted one still reading
-# `fn add(to base: Int, ...)` as `to: <type base>` and reporting an unknown
-# binding for a name the author did write. See that file for the measurement
-# and for why the mode-only shape (`edit token: Token`) is left alone.
+# Ownership mode is the optional first component of a parameter head.
 fn ownership_mode_token(source: Text, cursor: Int) -> Bool {
     let token = token_text(source, cursor)
     return token == "read" || token == "edit" || token == "take"
@@ -2359,85 +2352,94 @@ fn parameter_word_token(source: Text, cursor: Int) -> Bool {
     return kind == "identifier" || kind == "keyword"
 }
 
-fn call_argument_surface_refusal(what: Text, cursor: Int) -> Text {
-    return "error[E2S158]: " + what + " is specified by call-arguments v1 " +
+# The internal name in one call-arguments-v1 parameter head. Every semantic
+# reader uses this helper so mode, label, and body binding stay distinct.
+fn parameter_internal_start(source: Text, cursor: Int, limit: Int) -> Int {
+    let mut first = cursor
+    if ownership_mode_token(source, first) {
+        first = skip_trivia(source, token_end(source, first))
+    }
+    if first >= limit || !parameter_word_token(source, first) {
+        return -1
+    }
+    let after_first = skip_trivia(source, token_end(source, first))
+    if after_first < limit && token_text(source, after_first) == ":" {
+        return first
+    }
+    if after_first >= limit || !parameter_word_token(source, after_first) {
+        return -1
+    }
+    let colon = skip_trivia(source, token_end(source, after_first))
+    if colon < limit && token_text(source, colon) == ":" {
+        return after_first
+    }
+    return -1
+}
+
+fn parameter_external_start(source: Text, cursor: Int, limit: Int) -> Int {
+    let mut first = cursor
+    if ownership_mode_token(source, first) {
+        first = skip_trivia(source, token_end(source, first))
+    }
+    let internal = parameter_internal_start(source, cursor, limit)
+    if internal >= 0 && first != internal {
+        return first
+    }
+    return -1
+}
+
+fn parameter_type_start(source: Text, cursor: Int, limit: Int) -> Int {
+    let internal = parameter_internal_start(source, cursor, limit)
+    if internal < 0 {
+        return -1
+    }
+    let colon = skip_trivia(source, token_end(source, internal))
+    if colon >= limit || token_text(source, colon) != ":" {
+        return -1
+    }
+    let type_at = skip_trivia(source, token_end(source, colon))
+    if type_at >= limit {
+        return -1
+    }
+    return type_at
+}
+
+# The ownership slice has a real `List[Text]` parameter surface. Treat that
+# bounded list annotation as one type rather than stopping at its `[` token.
+fn parameter_list_type_end(source: Text, type_at: Int, limit: Int) -> Int {
+    if type_at < 0 || token_text(source, type_at) != "List" {
+        return -1
+    }
+    let open = skip_trivia(source, token_end(source, type_at))
+    if open >= limit || token_text(source, open) != "[" {
+        return -1
+    }
+    let element = skip_trivia(source, token_end(source, open))
+    if element >= limit || !parameter_word_token(source, element) {
+        return -1
+    }
+    let close = skip_trivia(source, token_end(source, element))
+    if close >= limit || token_text(source, close) != "]" {
+        return -1
+    }
+    return token_end(source, close)
+}
+
+fn parameter_list_type_text(source: Text, type_at: Int, limit: Int) -> Text {
+    if parameter_list_type_end(source, type_at, limit) < 0 {
+        return ""
+    }
+    let open = skip_trivia(source, token_end(source, type_at))
+    let element = skip_trivia(source, token_end(source, open))
+    return "List[" + token_text(source, element) + "]"
+}
+
+fn trailing_lambda_refusal(cursor: Int) -> Text {
+    return "error[E2S158]: a trailing lambda is specified by call-arguments v1 " +
     "but not implemented at byte " + to_text(cursor)
 }
 
-fn validate_call_argument_surface(source: Text) -> Text {
-    let mut function_start = next_function_start(source, 0)
-    while function_start < len(source) {
-        let open = parameter_open(source, function_start)
-        let mut close = -1
-        if open >= 0 {
-            close = balanced_end(source, open, "(", ")")
-        }
-        if open >= 0 && close >= 0 {
-            let mut cursor = skip_trivia(source, token_end(source, open))
-            let mut depth = 0
-            let mut words = 0
-            let mut first_word = -1
-            let mut second_word = -1
-            let mut mode_first = false
-            let mut before_colon = true
-            let mut stop = false
-            while cursor < close && !stop {
-                let token = token_text(source, cursor)
-                if token == "(" || token == "[" {
-                    depth = depth + 1
-                } else if token == "]" {
-                    depth = depth - 1
-                } else if token == ")" {
-                    if depth == 0 {
-                        stop = true
-                    } else {
-                        depth = depth - 1
-                    }
-                } else if token == "," && depth == 0 {
-                    words = 0
-                    first_word = -1
-                    second_word = -1
-                    mode_first = false
-                    before_colon = true
-                } else if token == ":" && depth == 0 && before_colon {
-                    before_colon = false
-                    # The span is the external label itself: word one of
-                    # `to base`, word two of `take into file`, because the mode
-                    # shifts everything right.
-                    if words == 2 && !mode_first {
-                        return call_argument_surface_refusal(
-                            "a declaration external label",
-                            first_word
-                        )
-                    }
-                    if words == 3 && mode_first {
-                        return call_argument_surface_refusal(
-                            "a declaration external label",
-                            second_word
-                        )
-                    }
-                } else if depth == 0 && before_colon &&
-                    parameter_word_token(source, cursor) {
-                    words = words + 1
-                    if words == 1 {
-                        first_word = cursor
-                        mode_first = ownership_mode_token(source, cursor)
-                    }
-                    if words == 2 {
-                        second_word = cursor
-                    }
-                }
-                if !stop {
-                    cursor = skip_trivia(source, token_end(source, cursor))
-                }
-            }
-        }
-        function_start = next_function_start(
-            source,
-            function_end(source, function_start)
-        )
-    }
-
+fn validate_trailing_lambda_surface(source: Text) -> Text {
     # `) fn(` is the trailing form and nothing else in this profile's grammar.
     # A named declaration is `fn` and an identifier, so requiring `(` after
     # `fn` leaves `call()` followed by `fn next(...)` alone.
@@ -2448,10 +2450,7 @@ fn validate_call_argument_surface(source: Text) -> Text {
             if keyword_at < len(source) && token_text(source, keyword_at) == "fn" {
                 let parameters = skip_trivia(source, token_end(source, keyword_at))
                 if parameters < len(source) && token_text(source, parameters) == "(" {
-                    return call_argument_surface_refusal(
-                        "a trailing lambda",
-                        keyword_at
-                    )
+                    return trailing_lambda_refusal(keyword_at)
                 }
             }
         }
@@ -2462,11 +2461,9 @@ fn validate_call_argument_surface(source: Text) -> Text {
 }
 
 fn parse_program(source: Text) -> Text {
-    # Before every other check, because it is the only one that can name the
-    # form the author actually wrote. Once a declaration external label has
-    # been read as a type, every later diagnostic is about a program nobody
-    # wrote.
-    let surface_check = validate_call_argument_surface(source)
+    # #882 owns attachment/lowering; refuse before ordinary call analysis can
+    # reinterpret the trailing lambda as a separate expression.
+    let surface_check = validate_trailing_lambda_surface(source)
     if starts_with(surface_check, "error[") {
         return surface_check
     }
@@ -2832,28 +2829,33 @@ fn borrowed_collection_check(source: Text) -> Text {
         while parameter_cursor < parameters_end &&
               token_text(source, parameter_cursor) != ")" {
             if token_text(source, parameter_cursor) == "read" {
-                let name_cursor = skip_trivia(
+                let name_cursor = parameter_internal_start(
                     source,
-                    token_end(source, parameter_cursor)
+                    parameter_cursor,
+                    parameters_end
                 )
-                let colon_cursor = skip_trivia(
+                let list_cursor = parameter_type_start(
                     source,
-                    token_end(source, name_cursor)
+                    parameter_cursor,
+                    parameters_end
                 )
-                let list_cursor = skip_trivia(
-                    source,
-                    token_end(source, colon_cursor)
-                )
-                let bracket_cursor = skip_trivia(
-                    source,
-                    token_end(source, list_cursor)
-                )
-                let element_cursor = skip_trivia(
-                    source,
-                    token_end(source, bracket_cursor)
-                )
-                if token_kind(source, name_cursor) == "identifier" &&
-                   token_text(source, colon_cursor) == ":" &&
+                let mut bracket_cursor = -1
+                let mut element_cursor = -1
+                if list_cursor >= 0 {
+                    bracket_cursor = skip_trivia(
+                        source,
+                        token_end(source, list_cursor)
+                    )
+                }
+                if bracket_cursor >= 0 {
+                    element_cursor = skip_trivia(
+                        source,
+                        token_end(source, bracket_cursor)
+                    )
+                }
+                if name_cursor >= 0 && list_cursor >= 0 &&
+                   bracket_cursor >= 0 && element_cursor >= 0 &&
+                   token_kind(source, name_cursor) == "identifier" &&
                    token_text(source, list_cursor) == "List" &&
                    token_text(source, bracket_cursor) == "[" &&
                    token_kind(source, element_cursor) == "identifier" {
@@ -3918,6 +3920,10 @@ fn emit_primary(source: Text, hir: Text, start: Int, end: Int) -> Text {
         # A callee the scope HIR resolved to a binding is either a lifted
         # lambda or a callable-typed parameter; anything else is a top-level
         # function looked up by name.
+        if call_has_labelled_argument(source, open) {
+            return "error[E2S158]: labelled-call ABI lowering is owned by #882; fixed-slot checked HIR is available at byte " +
+            to_text(cursor)
+        }
         let callee_binding = hir_use_binding_id(hir, cursor)
         let mut lambda_open = -1
         let mut indirect = false
@@ -4446,6 +4452,271 @@ fn validate_core_types(source: Text, hir: Text) -> Text {
     return "ok"
 }
 
+fn function_start_named(source: Text, wanted: Text) -> Int {
+    let mut cursor = next_function_start(source, 0)
+    while cursor < len(source) {
+        if function_name(source, cursor) == wanted {
+            return cursor
+        }
+        cursor = next_function_start(source, function_end(source, cursor))
+    }
+    return 0 - 1
+}
+
+# Start of the declaration-order parameter at `wanted_index`.
+fn function_parameter_start_at(
+    source: Text,
+    function_start: Int,
+    wanted_index: Int
+) -> Int {
+    let parameters = parameter_open(source, function_start)
+    if parameters < 0 {
+        return 0 - 1
+    }
+    let parameters_end = balanced_end(source, parameters, "(", ")")
+    if parameters_end < 0 {
+        return 0 - 1
+    }
+    let mut parameter = skip_trivia(source, token_end(source, parameters))
+    let mut index = 0
+    while parameter < parameters_end &&
+          token_text(source, parameter) != ")" {
+        if index == wanted_index {
+            return parameter
+        }
+        let type_start = parameter_type_start(
+            source,
+            parameter,
+            parameters_end
+        )
+        if type_start < 0 {
+            return 0 - 1
+        }
+        let mut type_end = callable_type_end(source, type_start)
+        if type_end < 0 {
+            let list_end = parameter_list_type_end(
+                source,
+                type_start,
+                parameters_end
+            )
+            if list_end >= 0 {
+                type_end = list_end
+            } else {
+                type_end = annotation_type_end(source, type_start)
+            }
+        }
+        let separator = skip_trivia(source, type_end)
+        if separator < parameters_end && token_text(source, separator) == "," {
+            parameter = skip_trivia(source, token_end(source, separator))
+        } else {
+            parameter = separator
+        }
+        index = index + 1
+    }
+    return 0 - 1
+}
+
+fn call_binding_failure(
+    code: Text,
+    message: Text,
+    primary: Int
+) -> Text {
+    return "error[" + code + "]: " + message + " at byte " +
+    to_text(primary)
+}
+
+# Bind one selected named call to fixed declaration-order slots. The C seed
+# publishes the corresponding source-order observations for semantic tooling;
+# this canonical implementation enforces the same slot and diagnostic rules.
+fn validate_declared_call_arguments(
+    source: Text,
+    callee: Text,
+    call_start: Int,
+    open: Int
+) -> Text {
+    let declaration = function_start_named(source, callee)
+    if declaration < 0 {
+        return ""
+    }
+    let parameters = parameter_open(source, declaration)
+    let parameters_end = balanced_end(source, parameters, "(", ")")
+    let close = balanced_end(source, open, "(", ")")
+    if parameters < 0 || parameters_end < 0 || close < 0 {
+        return ""
+    }
+    let count = parameter_count(source, declaration)
+    let mut has_external_parameter = false
+    let mut parameter_index = 0
+    while parameter_index < count {
+        let parameter = function_parameter_start_at(
+            source,
+            declaration,
+            parameter_index
+        )
+        has_external_parameter = has_external_parameter ||
+        parameter_external_start(source, parameter, parameters_end) >= 0
+        parameter_index = parameter_index + 1
+    }
+    if !has_external_parameter && !call_has_labelled_argument(source, open) {
+        return ""
+    }
+    let mut bound = "|"
+    let mut saw_label = false
+    let mut next_positional = 0
+    let mut argument = skip_trivia(source, token_end(source, open))
+    let mut scanning = true
+    while scanning && argument < close && token_text(source, argument) != ")" {
+        let mut label = 0 - 1
+        if parameter_word_token(source, argument) {
+            let colon = skip_trivia(source, token_end(source, argument))
+            if colon < close && token_text(source, colon) == ":" {
+                label = argument
+            }
+        }
+        let mut slot = 0 - 1
+        if label >= 0 {
+            saw_label = true
+            let mut index = 0
+            while index < count && slot < 0 {
+                let parameter = function_parameter_start_at(
+                    source,
+                    declaration,
+                    index
+                )
+                let external = parameter_external_start(
+                    source,
+                    parameter,
+                    parameters_end
+                )
+                if external >= 0 &&
+                   token_text(source, external) == token_text(source, label) {
+                    slot = index
+                }
+                index = index + 1
+            }
+            if slot < 0 {
+                let mut internal_match = false
+                let mut index = 0
+                while index < count && !internal_match {
+                    let parameter = function_parameter_start_at(
+                        source,
+                        declaration,
+                        index
+                    )
+                    let internal = parameter_internal_start(
+                        source,
+                        parameter,
+                        parameters_end
+                    )
+                    internal_match = internal >= 0 &&
+                    token_text(source, internal) == token_text(source, label)
+                    index = index + 1
+                }
+                if internal_match {
+                    return call_binding_failure(
+                        "E2S166",
+                        "label `" + token_text(source, label) +
+                        "` names an internal or unlabelled parameter",
+                        label
+                    )
+                }
+                return call_binding_failure(
+                    "E2S162",
+                    "unknown call label `" + token_text(source, label) + "`",
+                    label
+                )
+            }
+            if contains(bound, "|" + to_text(slot) + "|") {
+                return call_binding_failure(
+                    "E2S163",
+                    "duplicate call label `" + token_text(source, label) + "`",
+                    label
+                )
+            }
+        } else {
+            if saw_label {
+                return call_binding_failure(
+                    "E2S165",
+                    "positional argument follows a labelled argument",
+                    argument
+                )
+            }
+            while next_positional < count &&
+                  contains(bound, "|" + to_text(next_positional) + "|") {
+                next_positional = next_positional + 1
+            }
+            if next_positional >= count {
+                scanning = false
+            } else {
+                slot = next_positional
+                next_positional = next_positional + 1
+                let parameter = function_parameter_start_at(
+                    source,
+                    declaration,
+                    slot
+                )
+                let external = parameter_external_start(
+                    source,
+                    parameter,
+                    parameters_end
+                )
+                if external >= 0 {
+                    return call_binding_failure(
+                        "E2S164",
+                        "labelled parameter requires its external label",
+                        argument
+                    )
+                }
+            }
+        }
+        if slot >= 0 {
+            bound = bound + to_text(slot) + "|"
+        }
+        let end = argument_end(source, argument)
+        if end < 0 {
+            scanning = false
+        } else {
+            let separator = skip_trivia(source, end)
+            if separator < close && token_text(source, separator) == "," {
+                argument = skip_trivia(source, token_end(source, separator))
+            } else {
+                scanning = false
+            }
+        }
+    }
+    let mut slot = 0
+    while slot < count {
+        if !contains(bound, "|" + to_text(slot) + "|") {
+            let parameter = function_parameter_start_at(
+                source,
+                declaration,
+                slot
+            )
+            let external = parameter_external_start(
+                source,
+                parameter,
+                parameters_end
+            )
+            let internal = parameter_internal_start(
+                source,
+                parameter,
+                parameters_end
+            )
+            let mut declared = internal
+            if external >= 0 {
+                declared = external
+            }
+            return call_binding_failure(
+                "E2S164",
+                "missing argument `" + token_text(source, declared) + "`",
+                call_start
+            )
+        }
+        slot = slot + 1
+    }
+    return ""
+}
+
 fn call_has_labelled_argument(source: Text, open: Int) -> Bool {
     let close = balanced_end(source, open, "(", ")")
     if close < 0 {
@@ -4455,21 +4726,22 @@ fn call_has_labelled_argument(source: Text, open: Int) -> Bool {
     let mut scanning = true
     while scanning && argument < close &&
           token_text(source, argument) != ")" {
-        if token_kind(source, argument) == "identifier" {
+        if parameter_word_token(source, argument) {
             let colon = skip_trivia(source, token_end(source, argument))
-            if token_text(source, colon) == ":" {
+            if colon < close && token_text(source, colon) == ":" {
                 return true
             }
         }
         let end = argument_end(source, argument)
         if end < 0 {
-            return false
-        }
-        let separator = skip_trivia(source, end)
-        if separator < close && token_text(source, separator) == "," {
-            argument = skip_trivia(source, token_end(source, separator))
-        } else {
             scanning = false
+        } else {
+            let separator = skip_trivia(source, end)
+            if separator < close && token_text(source, separator) == "," {
+                argument = skip_trivia(source, token_end(source, separator))
+            } else {
+                scanning = false
+            }
         }
     }
     return false
@@ -4540,12 +4812,18 @@ fn validate_core_calls(source: Text, hir: Text) -> Text {
             if previous != "fn" && previous != "." && name != "print" &&
                !constructor_application &&
                open < len(source) && token_text(source, open) == "(" {
-                if call_has_labelled_argument(source, open) {
-                    return "error[E2S32]: ordinary function `" + name +
-                    "` does not accept labelled arguments at byte " +
-                    to_text(cursor)
-                }
                 let mut expected = function_arity(source, name)
+                if expected >= 0 {
+                    let binding_error = validate_declared_call_arguments(
+                        source,
+                        name,
+                        cursor,
+                        open
+                    )
+                    if len(binding_error) > 0 {
+                        return binding_error
+                    }
+                }
                 if expected == -2 {
                     return "error[E2S16]: duplicate Core function `" + name +
                     "` at byte " + to_text(cursor)
@@ -4626,15 +4904,23 @@ fn core_parameters(
     let mut emitted = ""
     let mut count = 0
     while cursor < parameters_end && token_text(source, cursor) != ")" {
-        if token_kind(source, cursor) != "identifier" {
+        let name_at = parameter_internal_start(
+            source,
+            cursor,
+            parameters_end
+        )
+        let type_cursor = parameter_type_start(
+            source,
+            cursor,
+            parameters_end
+        )
+        if name_at < 0 || type_cursor < 0 ||
+           token_kind(source, name_at) != "identifier" {
             return "error[E2S15]: expected Core parameter name at byte " +
             to_text(cursor)
         }
-        let name = token_text(source, cursor)
-        let colon = skip_trivia(source, token_end(source, cursor))
-        let type_cursor = skip_trivia(source, token_end(source, colon))
-        if colon >= parameters_end || token_text(source, colon) != ":" ||
-           type_cursor >= parameters_end {
+        let name = token_text(source, name_at)
+        if type_cursor >= parameters_end {
             return "error[E2S15]: Core parameters must have type Int, Text, a concrete enum, or a nominal record at byte " +
             to_text(cursor)
         }
@@ -4649,26 +4935,38 @@ fn core_parameters(
             declarator = callable_c_declarator(
                 source,
                 type_cursor,
-                "k_b" + hir_definition_id_at(hir, cursor)
+                "k_b" + hir_definition_id_at(hir, name_at)
             )
         } else if optional_int_type_end(source, type_cursor) >= 0 {
             type_end = optional_int_type_end(source, type_cursor)
             declarator = "KofunOptionalInt k_b" +
-                hir_definition_id_at(hir, cursor)
+                hir_definition_id_at(hir, name_at)
         } else if token_text(source, type_cursor) == "Int" {
             type_end = token_end(source, type_cursor)
-            declarator = "int64_t k_b" + hir_definition_id_at(hir, cursor)
+            declarator = "int64_t k_b" + hir_definition_id_at(hir, name_at)
         } else if token_text(source, type_cursor) == "Text" {
             type_end = token_end(source, type_cursor)
             declarator = "const char *k_b" +
-            hir_definition_id_at(hir, cursor)
+            hir_definition_id_at(hir, name_at)
+        } else if ownership_mode_token(source, cursor) &&
+            parameter_list_type_end(
+            source,
+            type_cursor,
+            parameters_end
+        ) >= 0 {
+            return "error[E2S10]: unsupported Core parameter type " +
+                parameter_list_type_text(
+                    source,
+                    type_cursor,
+                    parameters_end
+                ) + " at byte " + to_text(type_cursor)
         } else if enum_constructor_count(
             source,
             token_text(source, type_cursor)
         ) >= 0 {
             type_end = token_end(source, type_cursor)
             declarator =
-                "KofunEnumValue k_b" + hir_definition_id_at(hir, cursor)
+                "KofunEnumValue k_b" + hir_definition_id_at(hir, name_at)
         } else if record_declaration_start(
             source,
             token_text(source, type_cursor)
@@ -4676,7 +4974,7 @@ fn core_parameters(
             type_end = annotation_type_end(source, type_cursor)
             declarator = record_c_type_name(
                 annotation_type_text(source, type_cursor)
-            ) + " k_b" + hir_definition_id_at(hir, cursor)
+            ) + " k_b" + hir_definition_id_at(hir, name_at)
         }
         if type_end < 0 {
             return "error[E2S15]: Core parameters must have type Int, Text, a concrete enum, or a nominal record at byte " +
@@ -5209,7 +5507,7 @@ fn argument_end(source: Text, start: Int) -> Int {
         return lambda_end
     }
     let label = skip_trivia(source, start)
-    if token_kind(source, label) == "identifier" {
+    if parameter_word_token(source, label) {
         let colon = skip_trivia(source, token_end(source, label))
         if token_text(source, colon) == ":" {
             let value = skip_trivia(source, token_end(source, colon))
@@ -5238,15 +5536,74 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
                         source,
                         token_end(source, open)
                     )
-                    let mut index = 0
+                    let mut positional_index = 0
                     let mut scanning = true
                     while scanning && argument < close &&
                           token_text(source, argument) != ")" {
-                        if argument == target {
+                        let mut label = 0 - 1
+                        let mut value = argument
+                        if parameter_word_token(source, argument) {
+                            let colon = skip_trivia(
+                                source,
+                                token_end(source, argument)
+                            )
+                            if colon < close &&
+                               token_text(source, colon) == ":" {
+                                label = argument
+                                value = skip_trivia(
+                                    source,
+                                    token_end(source, colon)
+                                )
+                            }
+                        }
+                        if argument == target || value == target {
+                            let callee = token_text(source, cursor)
+                            let mut slot = positional_index
+                            if label >= 0 {
+                                let declaration = function_start_named(
+                                    source,
+                                    callee
+                                )
+                                let parameters = parameter_open(
+                                    source,
+                                    declaration
+                                )
+                                let parameters_end = balanced_end(
+                                    source,
+                                    parameters,
+                                    "(",
+                                    ")"
+                                )
+                                let count = parameter_count(
+                                    source,
+                                    declaration
+                                )
+                                slot = 0
+                                let mut matching = true
+                                while matching && slot < count {
+                                    let parameter = function_parameter_start_at(
+                                        source,
+                                        declaration,
+                                        slot
+                                    )
+                                    let external = parameter_external_start(
+                                        source,
+                                        parameter,
+                                        parameters_end
+                                    )
+                                    if external >= 0 &&
+                                       token_text(source, external) ==
+                                       token_text(source, label) {
+                                        matching = false
+                                    } else {
+                                        slot = slot + 1
+                                    }
+                                }
+                            }
                             return function_parameter_type(
                                 source,
-                                token_text(source, cursor),
-                                index
+                                callee,
+                                slot
                             )
                         }
                         let argument_close = argument_end(
@@ -5266,7 +5623,9 @@ fn call_argument_expected_type(source: Text, target: Int) -> Text {
                                     source,
                                     token_end(source, separator)
                                 )
-                                index = index + 1
+                                if label < 0 {
+                                    positional_index = positional_index + 1
+                                }
                             } else {
                                 scanning = false
                             }
@@ -5376,52 +5735,6 @@ fn optional_int_result_containing(source: Text, position: Int) -> Bool {
            optional_int_result_at(source, function_start)
 }
 
-fn optional_int_parameter(source: Text, callee: Text, wanted: Int) -> Bool {
-    let mut cursor = next_function_start(source, 0)
-    while cursor < len(source) {
-        if function_name(source, cursor) != callee {
-            let end = function_end(source, cursor)
-            if end <= cursor {
-                break
-            }
-            cursor = next_function_start(source, end)
-            continue
-        }
-        let open = parameter_open(source, cursor)
-        if open < 0 {
-            return false
-        }
-        let close = balanced_end(source, open, "(", ")")
-        if close < 0 {
-            return false
-        }
-        let mut parameter = skip_trivia(source, token_end(source, open))
-        let mut index = 0
-        while parameter < close && token_text(source, parameter) != ")" {
-            let colon = skip_trivia(source, token_end(source, parameter))
-            if colon >= close || token_text(source, colon) != ":" {
-                break
-            }
-            let type_start = skip_trivia(source, token_end(source, colon))
-            let mut type_end = optional_int_type_end(source, type_start)
-            if index == wanted {
-                return type_end >= 0
-            }
-            if type_end < 0 {
-                type_end = token_end(source, type_start)
-            }
-            let separator = skip_trivia(source, type_end)
-            if separator >= close || token_text(source, separator) != "," {
-                break
-            }
-            parameter = skip_trivia(source, token_end(source, separator))
-            index = index + 1
-        }
-        return false
-    }
-    return false
-}
-
 fn optional_int_binding(source: Text, position: Int, name: Text) -> Bool {
     if !source_uses_optional_int(source) {
         return false
@@ -5488,52 +5801,7 @@ fn optional_int_carrier_position(source: Text, at: Int) -> Bool {
     if !source_uses_optional_int(source) {
         return false
     }
-    let function_start = optional_int_function_start(source, at)
-    if function_start < 0 {
-        return false
-    }
-    let function_close = function_end(source, function_start)
-    let mut cursor = skip_trivia(source, function_start)
-    while cursor < function_close {
-        let open = skip_trivia(source, token_end(source, cursor))
-        if token_kind(source, cursor) == "identifier" &&
-           open < function_close && token_text(source, open) == "(" {
-            let arguments_end = balanced_end(source, open, "(", ")")
-            if arguments_end > 0 {
-                let callee = token_text(source, cursor)
-                let mut argument = skip_trivia(source, token_end(source, open))
-                let mut index = 0
-                while argument < arguments_end &&
-                      token_text(source, argument) != ")" {
-                    let bound = argument_end(source, argument)
-                    if bound < 0 {
-                        break
-                    }
-                    if argument == at {
-                        return skip_trivia(source, token_end(source, at)) >=
-                                   bound &&
-                               optional_int_parameter(source, callee, index)
-                    }
-                    let separator = skip_trivia(source, bound)
-                    if separator >= arguments_end ||
-                       token_text(source, separator) != "," {
-                        break
-                    }
-                    argument = skip_trivia(
-                        source,
-                        token_end(source, separator)
-                    )
-                    index = index + 1
-                }
-            }
-        }
-        let next = token_end(source, cursor)
-        if next <= cursor {
-            break
-        }
-        cursor = skip_trivia(source, next)
-    }
-    return false
+    return call_argument_expected_type(source, at) == "Int?"
 }
 
 # Kofun returns the binding position separately because this source profile
@@ -8284,8 +8552,8 @@ fn function_return_type(source: Text, wanted: Text) -> Text {
     return ""
 }
 
-# Declared type of one named function parameter. Callable and bracketed types
-# are skipped as one type while walking to the requested parameter.
+# Declared type of one named function parameter. Full annotation spans are
+# skipped while walking, including callable, optional, and bracketed types.
 fn function_parameter_type(
     source: Text,
     wanted: Text,
@@ -8314,39 +8582,41 @@ fn function_parameter_type(
             let mut index = 0
             while cursor < parameters_end &&
                   token_text(source, cursor) != ")" {
-                let colon = skip_trivia(
+                let type_start = parameter_type_start(
                     source,
-                    token_end(source, cursor)
+                    cursor,
+                    parameters_end
                 )
-                if colon >= parameters_end ||
-                   token_text(source, colon) != ":" {
+                if type_start < 0 || type_start >= parameters_end {
                     return ""
                 }
-                let type_start = skip_trivia(
+                let optional_end = optional_int_type_end(source, type_start)
+                let list_end = parameter_list_type_end(
                     source,
-                    token_end(source, colon)
+                    type_start,
+                    parameters_end
                 )
-                if type_start >= parameters_end {
-                    return ""
-                }
                 if index == wanted_index {
+                    if optional_end >= 0 {
+                        return "Int?"
+                    }
+                    if list_end >= 0 {
+                        return parameter_list_type_text(
+                            source,
+                            type_start,
+                            parameters_end
+                        )
+                    }
                     return annotation_type_text(source, type_start)
                 }
                 let mut type_end = callable_type_end(source, type_start)
                 if type_end < 0 {
-                    type_end = token_end(source, type_start)
-                    let bracket = skip_trivia(source, type_end)
-                    if bracket < parameters_end &&
-                       token_text(source, bracket) == "[" {
-                        type_end = balanced_end(
-                            source,
-                            bracket,
-                            "[",
-                            "]"
-                        )
-                        if type_end < 0 {
-                            return ""
-                        }
+                    if optional_end >= 0 {
+                        type_end = optional_end
+                    } else if list_end >= 0 {
+                        type_end = list_end
+                    } else {
+                        type_end = annotation_type_end(source, type_start)
                     }
                 }
                 let separator = skip_trivia(source, type_end)
@@ -8714,14 +8984,30 @@ fn build_scope_hir_mode(
         )
         while parameter_cursor < parameters_close &&
               token_text(source, parameter_cursor) != ")" {
-            let name = parameter_cursor
-            let colon = skip_trivia(source, token_end(source, name))
-            let type_cursor = skip_trivia(source, token_end(source, colon))
+            let name = parameter_internal_start(
+                source,
+                parameter_cursor,
+                parameters_close
+            )
+            let type_cursor = parameter_type_start(
+                source,
+                parameter_cursor,
+                parameters_close
+            )
+            if name < 0 || type_cursor < 0 {
+                return "error[E2S35]: malformed parameter head at byte " +
+                to_text(parameter_cursor)
+            }
             # A callable type spans several tokens. Stepping over only the
             # first would leave this walk inside the type, so the parameters
             # after it would never be bound and their uses would be reported
             # as unknown lexical bindings.
             let callable_end = callable_type_end(source, type_cursor)
+            let list_end = parameter_list_type_end(
+                source,
+                type_cursor,
+                parameters_close
+            )
             # A parameter binding records the annotation's full identity, so a
             # const argument reaches the scope HIR instead of being flattened
             # to its head. Recording `Fixed` here would make every scale one
@@ -8734,6 +9020,13 @@ fn build_scope_hir_mode(
             } else if optional_int_type_end(source, type_cursor) >= 0 {
                 type_end = optional_int_type_end(source, type_cursor)
                 binding_type = "Int?"
+            } else if list_end >= 0 {
+                type_end = list_end
+                binding_type = parameter_list_type_text(
+                    source,
+                    type_cursor,
+                    parameters_close
+                )
             }
             let first_declaration = hir_same_scope_declaration(
                 hir,
@@ -8751,10 +9044,14 @@ fn build_scope_hir_mode(
                 return "error[E2S35]: lexical binding limit is 256 per function at byte " +
                 to_text(name)
             }
+            let mut binding_ownership = "copy"
+            if ownership_mode_token(source, parameter_cursor) {
+                binding_ownership = token_text(source, parameter_cursor)
+            }
             hir = hir + "binding|" + to_text(next_binding_id) + "|" +
             to_text(parameter_scope) + "|" + token_text(source, name) +
             "|immutable|" + binding_type +
-            "|copy|initialized|" + to_text(name) + "|" +
+            "|" + binding_ownership + "|initialized|" + to_text(name) + "|" +
             to_text(token_end(source, name)) + "|" +
             to_text(token_end(source, name)) + "\n"
             next_binding_id = next_binding_id + 1
@@ -12184,12 +12481,9 @@ fn move_use_position(source: Text, previous: Int, cursor: Int) -> Bool {
 #
 # Three of the standalone record frontend's four ownership refusals are
 # reproduced, with its exact wording: partial move, second move, and
-# use-after-move. The fourth, E2S122 for moving a `read` binding, is not
-# representable here — an ownership-mode parameter registers no binding at all,
-# so `fn peek(read token: Token)` already refuses every mention of `token` with
-# E2S35 whether or not a `take` follows. That boundary predates this rule and
-# #922 owns it; `tests/conformance/records/production_read_parameter.kofun`
-# pins it.
+# use-after-move. E2S122 for moving a `read` binding remains outside this
+# bounded source-order validator; ownership-mode parameters themselves now
+# bind through the production HIR and lowering path (#881).
 #
 # The walk visits each `take` and then scans forward for the mention that move
 # invalidates, so its findings do not arrive in source order. Keeping the one
@@ -12622,7 +12916,13 @@ fn unsupported_lowering_error(diagnostic: Text) -> Bool {
         "error[E2S10]: unsupported Core builtin call "
     ) || starts_with(
         diagnostic,
+        "error[E2S10]: unsupported Core parameter type "
+    ) || starts_with(
+        diagnostic,
         "error[E2S24]: general pattern syntax is parsed "
+    ) || starts_with(
+        diagnostic,
+        "error[E2S158]: labelled-call ABI lowering is owned by #882"
     )
 }
 
@@ -13006,9 +13306,12 @@ fn selfhost_signature(source: Text, functions: Text, start: Int) -> Text {
         if arity >= 8 {
             return selfhost_error("E2S17", cursor, "parameter limit is 8")
         }
-        let colon = skip_trivia(source, token_end(source, cursor))
-        let type_at = skip_trivia(source, token_end(source, colon))
-        if colon >= parameters_close || token_text(source, colon) != ":" {
+        let type_at = parameter_type_start(
+            source,
+            cursor,
+            parameters_close
+        )
+        if type_at < 0 {
             return selfhost_error(
                 "E2S15",
                 cursor,
@@ -14829,7 +15132,24 @@ fn selfhost_function_hir(
             line,
             4 + parameter_index
         )
-        let name_text = token_text(source, cursor)
+        let name_at = parameter_internal_start(
+            source,
+            cursor,
+            parameters_close
+        )
+        let type_at = parameter_type_start(
+            source,
+            cursor,
+            parameters_close
+        )
+        if name_at < 0 || type_at < 0 {
+            return selfhost_error(
+                "E2S35",
+                cursor,
+                "malformed parameter head"
+            )
+        }
+        let name_text = token_text(source, name_at)
         records = records + selfhost_bind_records(
             types,
             to_text(symbol) + "|" + to_text(binding),
@@ -14838,14 +15158,12 @@ fn selfhost_function_hir(
             surface,
             "imm",
             "parameter",
-            to_text(cursor) + "|" + to_text(token_end(source, cursor))
+            to_text(name_at) + "|" + to_text(token_end(source, name_at))
         )
         env = env + "env|" + name_text + "|" + surface + "|" +
         to_text(binding) + "|imm\n"
         symbol = symbol + 1
         binding = binding + 1
-        let colon = skip_trivia(source, token_end(source, cursor))
-        let type_at = skip_trivia(source, token_end(source, colon))
         cursor = skip_trivia(source, token_end(source, type_at))
         if surface == "List" {
             cursor = skip_trivia(source, token_end(source, cursor))

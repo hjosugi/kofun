@@ -1,1 +1,1 @@
-error[E2S32]: ordinary function `identity` does not accept labelled arguments at byte 82
+error[E2S166]: label `value` names an internal or unlabelled parameter at byte 91

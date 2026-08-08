@@ -94,6 +94,47 @@ grep -F '|qualifier=api|name=exported|' "$WORK/source-free.hir" >/dev/null ||
 grep -F '|view=public|' "$WORK/source-free.hir" >/dev/null ||
     fail 'external source-free consumer did not select the public view'
 
+# External labels are semantic signature inputs; internal parameter names are
+# deliberately absent. Both facts and both digest views are decoded from KIF,
+# so none of these checks can pass by rereading the source.
+for variant in base internal_rename public_rename internal_external_rename; do
+    "$PRODUCER" "$CASES/fixtures/labels_${variant}.kofun" "$LOGICAL_PATH" \
+        "$WORK/labels-${variant}.kif" 2026
+    "$KIF_TOOL" read "$WORK/labels-${variant}.kif" \
+        "$WORK/labels-${variant}.json"
+done
+cmp "$WORK/labels-base.kif" "$WORK/labels-internal_rename.kif" ||
+    fail 'internal parameter rename changed canonical KIF identity'
+grep -F '"parameter_labels": ["in", "from"]' \
+    "$WORK/labels-base.json" >/dev/null ||
+    fail 'decoded public KIF omitted declaration-order labels'
+grep -F '"parameter_labels": ["by"]' "$WORK/labels-base.json" >/dev/null ||
+    fail 'decoded internal KIF omitted its external label'
+digest_field() {
+    field=$1
+    file=$2
+    sed -n "s/.*\"$field\": \"\([0-9a-f]*\)\".*/\1/p" "$file"
+}
+base_public=$(digest_field public_semantic_digest "$WORK/labels-base.json")
+base_internal=$(digest_field package_internal_semantic_digest \
+    "$WORK/labels-base.json")
+public_rename_public=$(digest_field public_semantic_digest \
+    "$WORK/labels-public_rename.json")
+public_rename_internal=$(digest_field package_internal_semantic_digest \
+    "$WORK/labels-public_rename.json")
+internal_rename_public=$(digest_field public_semantic_digest \
+    "$WORK/labels-internal_external_rename.json")
+internal_rename_internal=$(digest_field package_internal_semantic_digest \
+    "$WORK/labels-internal_external_rename.json")
+test "$base_public" != "$public_rename_public" ||
+    fail 'public external-label rename preserved the public digest'
+test "$base_internal" != "$public_rename_internal" ||
+    fail 'public external-label rename preserved the internal digest'
+test "$base_public" = "$internal_rename_public" ||
+    fail 'internal-only external-label rename changed the public digest'
+test "$base_internal" != "$internal_rename_internal" ||
+    fail 'internal-only external-label rename preserved the internal digest'
+
 cp "$WORK/interface.kif" "$WORK/prior.kif"
 set +e
 "$PRODUCER" "$CASES/fixtures/failed.kofun" "$LOGICAL_PATH" \
@@ -119,7 +160,7 @@ if test -s "$WORK/cancel.stderr"; then
 fi
 grep -F 'error[E2S16]:' "$WORK/failed.stdout" >/dev/null ||
     fail 'failed compile did not retain the compiler diagnostic'
-grep -F 'EKI02: KIF v1 does not support record signature publication' \
+grep -F 'EKI02: KIF v2 does not support record signature publication' \
     "$WORK/unsupported.stderr" >/dev/null ||
     fail 'unsupported signature did not fail explicitly'
 cmp "$WORK/prior.kif" "$WORK/interface.kif" ||
@@ -150,4 +191,5 @@ printf '%s\n' \
     'PASS: committed Stage 2 facts publish canonical KIF without an adapter inventory' \
     'PASS: public/internal function and flat-ADT identities are exact and private facts are absent' \
     'PASS: failures, unsupported signatures, and cancellation preserve prior or cold no KIF' \
-    'PASS: source order/path remap bytes and source-free resolution are deterministic'
+    'PASS: source order/path remap bytes and source-free resolution are deterministic' \
+    'PASS: external labels survive source-free KIF readback and invalidate only their semantic digest views'

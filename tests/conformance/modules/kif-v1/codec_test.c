@@ -18,6 +18,7 @@ enum {
     FACT_TAG_SYMBOL = 0x8002,
     FACT_TAG_KIND = 0x8003,
     FACT_TAG_NAME = 0x8004,
+    FACT_TAG_SIGNATURE = 0x8006,
     FACT_TAG_EXPORT_CHAIN = 0x800c,
     FACT_TAG_EXPORT_TARGET_KIND = 0x800d,
     FACT_TAG_EXPORT_TARGET_MODULE_PATH = 0x8010
@@ -350,6 +351,42 @@ static bool find_export_record(
     return false;
 }
 
+static bool find_fact_record(
+    const uint8_t *bytes,
+    FieldPosition vector,
+    KofunKifFactKind wanted_kind,
+    FieldPosition *record_out
+) {
+    uint32_t count;
+    size_t cursor;
+    size_t index;
+    if (vector.length < 4u) return false;
+    count = load_u32(bytes + vector.value);
+    cursor = vector.value + 4u;
+    for (index = 0u; index < count; index += 1u) {
+        FieldPosition record;
+        FieldPosition kind;
+        uint32_t record_length;
+        if (vector.value + vector.length - cursor < 4u) return false;
+        record_length = load_u32(bytes + cursor);
+        record.header = cursor;
+        record.value = cursor + 4u;
+        record.length = record_length;
+        if ((size_t)record_length >
+                vector.value + vector.length - record.value) {
+            return false;
+        }
+        if (find_field(bytes, record.value, record.length,
+                FACT_TAG_KIND, &kind) &&
+            kind.length == 1u && bytes[kind.value] == (uint8_t)wanted_kind) {
+            *record_out = record;
+            return true;
+        }
+        cursor = record.value + record.length;
+    }
+    return false;
+}
+
 static void recompute_semantic_digests(uint8_t *bytes, size_t length) {
     FieldPosition public_vector;
     FieldPosition internal_vector;
@@ -373,10 +410,10 @@ static void recompute_semantic_digests(uint8_t *bytes, size_t length) {
         public_vector.value + public_vector.length - HEADER_BYTES;
     internal_view_length =
         internal_vector.value + internal_vector.length - HEADER_BYTES;
-    framed_hash("kofun.digest.public-semantic/v1",
+    framed_hash("kofun.digest.public-semantic/v2",
         bytes + HEADER_BYTES, public_view_length,
         bytes + public_digest.value);
-    framed_hash("kofun.digest.package-internal/v1",
+    framed_hash("kofun.digest.package-internal/v2",
         bytes + HEADER_BYTES, internal_view_length,
         bytes + internal_digest.value);
 }
@@ -388,6 +425,8 @@ static void test_structural_mutations(const uint8_t *good, size_t length) {
     FieldPosition first;
     FieldPosition second;
     FieldPosition field;
+    FieldPosition function;
+    FieldPosition signature;
     size_t inserted_length;
     static const uint8_t optional_value[3] = { 'o', 'p', 't' };
 
@@ -402,7 +441,7 @@ static void test_structural_mutations(const uint8_t *good, size_t length) {
     free(copy);
 
     copy = duplicate_bytes(good, length);
-    store_u16(copy + 4u, 2u);
+    store_u16(copy + 4u, 3u);
     expect_status(copy, length, KOFUN_KIF_UNSUPPORTED_SCHEMA, "unsupported major");
     free(copy);
 
@@ -433,6 +472,29 @@ static void test_structural_mutations(const uint8_t *good, size_t length) {
             TAG_PUBLIC_FACTS, &public_vector) ||
         !find_field(good, HEADER_BYTES, length - HEADER_BYTES,
             TAG_PUBLIC_DIGEST, &digest)) fail("required field lookup failed");
+
+    if (!find_fact_record(good, public_vector, KOFUN_KIF_FACT_FUNCTION,
+            &function) ||
+        !find_field(good, function.value, function.length,
+            FACT_TAG_SIGNATURE, &signature) ||
+        signature.length < 6u || good[signature.value] != 1u ||
+        load_u16(good + signature.value + 1u) == 0u ||
+        good[signature.value + 4u] != 0u) {
+        fail("cannot locate canonical unlabelled parameter marker");
+    }
+    copy = duplicate_bytes(good, length);
+    copy[signature.value + 4u] = UINT8_C(2);
+    recompute_semantic_digests(copy, length);
+    expect_status(copy, length, KOFUN_KIF_NONCANONICAL,
+        "unknown parameter label marker");
+    free(copy);
+
+    copy = duplicate_bytes(good, length);
+    copy[signature.value + 4u] = UINT8_C(1);
+    recompute_semantic_digests(copy, length);
+    expect_status(copy, length, KOFUN_KIF_NONCANONICAL,
+        "truncated parameter label payload");
+    free(copy);
 
     copy = duplicate_bytes(good, length);
     copy[digest.value] ^= UINT8_C(1);
@@ -540,7 +602,7 @@ static void test_limits(const uint8_t *good, size_t length) {
     boundary = calloc(KOFUN_KIF_MAX_ENVELOPE, 1u);
     if (boundary == NULL) fail("16 MiB boundary allocation failed");
     memcpy(boundary, "KIF\0", 4u);
-    store_u16(boundary + 4u, 1u);
+    store_u16(boundary + 4u, 2u);
     store_u32(boundary + 8u, KOFUN_KIF_MAX_ENVELOPE - HEADER_BYTES);
     expect_status(boundary, KOFUN_KIF_MAX_ENVELOPE, KOFUN_KIF_NONCANONICAL,
         "exact 16 MiB envelope admitted to structural validation");
@@ -638,6 +700,7 @@ static void test_export_facts(
     uint8_t *mutated;
     size_t index;
     bool found_module = false;
+    bool found_function = false;
     if (dependency.status != KOFUN_KIF_OK) {
         fail("cannot read dependency for export fixture");
     }
@@ -669,6 +732,7 @@ static void test_export_facts(
     public_facts[0].export_target_kind =
         KOFUN_KIF_EXPORT_TARGET_FUNCTION;
     public_facts[0].parameter_count = target_function->parameter_count;
+    public_facts[0].parameter_labels = target_function->parameter_labels;
     public_facts[0].result_type = target_function->result_type;
     compute_export_binding_id(facade.module_id,
         public_facts[0].namespace_id, function_name,
@@ -731,9 +795,17 @@ static void test_export_facts(
                 fail("module target identity did not round-trip");
             }
             found_module = true;
+        } else if (fact->export_target_kind ==
+                KOFUN_KIF_EXPORT_TARGET_FUNCTION) {
+            if (fact->parameter_count != target_function->parameter_count ||
+                fact->parameter_labels == NULL) {
+                fail("function export label shape did not round-trip");
+            }
+            found_function = true;
         }
     }
     if (!found_module) fail("module export fact is absent");
+    if (!found_function) fail("function export fact is absent");
     kofun_kif_destroy(readback.interface);
 
     memcpy(function_chain + KOFUN_KIF_ID_BYTES, function_chain,
@@ -824,6 +896,6 @@ int main(int argc, char **argv) {
     test_writer_failures(good, length, argv[2]);
     test_export_facts(good, length, argv[2]);
     free(good);
-    puts("PASS: KIF v1 mutation, limit, publication, and writer transaction matrix");
+    puts("PASS: KIF v2 mutation, label, limit, publication, and writer transaction matrix");
     return 0;
 }

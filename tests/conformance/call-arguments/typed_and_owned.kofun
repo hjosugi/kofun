@@ -1,0 +1,13 @@
+fn choose(number amount: Int, text label: Text) -> Int {
+    return amount
+}
+
+fn consume(take into file: Int) -> Int {
+    return file
+}
+
+fn main() -> Int {
+    print(choose(text: "kept", number: 7))
+    print(consume(into: 9))
+    return 0
+}

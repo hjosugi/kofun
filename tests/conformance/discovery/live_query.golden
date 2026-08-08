@@ -4,7 +4,7 @@ source-sha256=aede30ee5317620c21fa2a94729606d9d7a96bfbca039feccbc9564da1338f66
 generation=19
 expression=122..128
 expressions=5 candidates=5 hidden=yes
-result-bytes=5783 repeated=identical
+result-bytes=5774 repeated=identical
 stale=stale-source span=invalid-position source-buffer=refused
 invalid-visibility-kind-status=hidden
 unterminated-snapshot-text=refused
@@ -200,9 +200,9 @@ unterminated-snapshot-text=refused
   "type": {
     "dependencies": [],
     "diagnostic_ids": [],
-    "display": null,
+    "display": "List[Text]",
     "identity": null,
-    "reason": "type-not-available-in-current-subset",
-    "status": "unavailable"
+    "reason": "incomplete-analysis",
+    "status": "provisional"
   }
 }

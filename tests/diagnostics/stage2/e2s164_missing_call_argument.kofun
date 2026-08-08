@@ -1,0 +1,11 @@
+# diagnostic-mode: compile
+# expect-code: E2S164
+# expect-span: byte 176
+fn replace(in text: Int, from old: Int) -> Int {
+    return text + old
+}
+
+fn main() -> Int {
+    print(replace(in: 1))
+    return 0
+}

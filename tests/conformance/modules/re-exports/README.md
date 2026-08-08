@@ -4,7 +4,7 @@ This gate exercises the bounded resolver for the accepted
 `pub import module.path` and `pub from module.path import Name` forms. It
 preserves original `ModuleId`/`NamespaceId`/`SymbolId` values, gives every
 facade edge a distinct `ExportBindingId`, rejects visibility widening, and
-serializes public export facts into the authoritative KIF v1 interface.
+serializes public export facts into the authoritative KIF v2 interface.
 
 The line-oriented HIR and documentation projection are focused inspection
 artifacts. The KIF file is authoritative. The current executable slice covers

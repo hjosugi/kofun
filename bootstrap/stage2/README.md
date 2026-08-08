@@ -527,7 +527,7 @@ remapping, no unqualified leakage, missing/self/duplicate/colliding imports,
 canonical cycles, visibility enforcement, resource rejection, transaction
 failure, and reference-backend execution through the resolved `SymbolId`.
 
-`kif_v1.c` and `kif_v1.h` implement the compiler-authoritative KIF v1 binary
+`kif_v1.c` and `kif_v1.h` implement the compiler-authoritative KIF v2 binary
 writer/reader for bounded function, flat-ADT, and public re-export facts.
 Export records preserve source import, facade edge, original target, and
 canonical chain identities without changing existing declaration-only bytes.
@@ -543,11 +543,15 @@ limits, failed publication, C11 warnings, sanitizers, and static analysis.
 `tests/conformance/modules/re-exports/run.sh` adds export-fact digest,
 round-trip, mutation, and source-free facade-consumption coverage.
 
+Function signatures carry a canonical external-label/unlabelled entry beside
+each parameter type. The defensive reader validates those entries before
+publication; internal parameter names remain excluded from interface identity.
+
 `stage2_kif_producer.c` is the normal Stage 2 source-to-KIF bridge. It asks the
 same committed compiler run used by `semantic_producer.c` for structured
 function, ADT, constructor, identity, visibility, and type facts; it never
 reconstructs authority from rendered event text or an adapter inventory. KIF
-v1.1 keeps the existing `Int` encoding byte-for-byte and adds resolved flat
+KIF v2 keeps the existing type-reference encoding and adds resolved flat
 nominal ADT SymbolIds to function parameters/results and zero/one-field
 constructor payloads. Public signatures may reference only public ADTs;
 package-internal signatures may reference public or internal ADTs. A private,

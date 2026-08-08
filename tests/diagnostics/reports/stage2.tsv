@@ -22,6 +22,11 @@ E2S154	stage2	stdout	1	required	not-applicable	forbidden
 E2S157	stage2	stdout	1	required	not-applicable	forbidden
 E2S158	stage2	stdout	1	required	not-applicable	forbidden
 E2S16	stage2	stdout	1	required	not-applicable	forbidden
+E2S162	stage2	stdout	1	required	not-applicable	forbidden
+E2S163	stage2	stdout	1	required	required	forbidden
+E2S164	stage2	stdout	1	required	required	forbidden
+E2S165	stage2	stdout	1	required	not-applicable	forbidden
+E2S166	stage2	stdout	1	required	required	forbidden
 E2S17	stage2	stdout	1	required	not-applicable	forbidden
 E2S18	stage2	stdout	1	required	not-applicable	forbidden
 E2S19	stage2	stdout	1	required	not-applicable	forbidden

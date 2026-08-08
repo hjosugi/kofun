@@ -122,10 +122,10 @@ provider_golden operations operations
 # The live boundary: one real Stage 2 ownership analysis over a List[Text]
 # occurrence, followed by the same provider projection used above.  The
 # current producer has no committed TypeId for that recovery-profile
-# occurrence, so the pinned answer is deliberately partial rather than an
-# invented validated type.  Direct function/constructor rows still carry the
-# producer's stable SymbolIds, while the private function becomes only an
-# aggregate omission.
+# occurrence, so the pinned answer carries a provisional `List[Text]` display
+# rather than inventing a validated identity. Direct function/constructor rows
+# still carry the producer's stable SymbolIds, while the private function
+# becomes only an aggregate omission.
 "$WORK/live-query-test" "$CASES/live_list_text.kofun" \
     >"$WORK/live_query.observed" 2>&1
 cmp "$CASES/live_query.golden" "$WORK/live_query.observed" ||

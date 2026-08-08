@@ -1,0 +1,8 @@
+fn identity(value: Int) -> Int {
+    return value
+}
+
+fn main() -> Int {
+    print(identity(value: 1))
+    return 0
+}

@@ -481,7 +481,7 @@ static bool producer_publication_surface_supported(
             token_equal(source, declaration, "throws")) {
             producer_set_tooling_error(
                 result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                "KIF v1 does not support effect components in published signatures"
+                "KIF v2 does not support effect components in published signatures"
             );
             return false;
         }
@@ -494,7 +494,7 @@ static bool producer_publication_surface_supported(
         if (token_equal(source, after_name, "[")) {
             producer_set_tooling_error(
                 result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                "KIF v1 does not support generic components in published signatures"
+                "KIF v2 does not support generic components in published signatures"
             );
             return false;
         }
@@ -514,7 +514,7 @@ static bool producer_publication_surface_supported(
                 token_equal(source, part, "take")) {
                 producer_set_tooling_error(
                     result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                    "KIF v1 does not support ownership modes in published signatures"
+                    "KIF v2 does not support ownership modes in published signatures"
                 );
                 return false;
             }
@@ -2245,6 +2245,120 @@ static bool producer_collect_references(Producer *producer) {
     {
         int64_t line = hir_record_start(
             producer->semantic_observations,
+            "call-argument",
+            0
+        );
+        while (line >= 0) {
+            char *callee = hir_field(
+                producer->semantic_observations, line, 1);
+            char *slot_text = hir_field(
+                producer->semantic_observations, line, 2);
+            char *source_index_text = hir_field(
+                producer->semantic_observations, line, 3);
+            char *argument_text = hir_field(
+                producer->semantic_observations, line, 4);
+            char *value_text = hir_field(
+                producer->semantic_observations, line, 5);
+            char *external = hir_field(
+                producer->semantic_observations, line, 6);
+            char *internal = hir_field(
+                producer->semantic_observations, line, 7);
+            char *type = hir_field(
+                producer->semantic_observations, line, 8);
+            char *mode = hir_field(
+                producer->semantic_observations, line, 9);
+            int64_t slot = decimal_value(slot_text);
+            int64_t source_index = decimal_value(source_index_text);
+            int64_t argument = decimal_value(argument_text);
+            int64_t value = decimal_value(value_text);
+            int64_t end = argument >= 0
+                ? argument_end(producer->source, argument) : -1;
+            bool valid = slot >= 0 && slot < 8 && source_index >= 0 &&
+                argument >= 0 && value >= argument && end > value &&
+                end <= source_length && callee[0] != '\0' &&
+                external[0] != '\0' && internal[0] != '\0' &&
+                type[0] != '\0' && mode[0] != '\0' &&
+                ((uint64_t)value < producer->reference_limit ||
+                 producer->compiler_exit_class == 3u);
+            if (valid) {
+                char node_name[PRODUCER_IDENTIFIER_CAPACITY];
+                int written = snprintf(
+                    node_name,
+                    sizeof(node_name),
+                    "call-argument:%s:slot=%" PRId64 ":source=%" PRId64
+                    ":label=%s:internal=%s",
+                    callee,
+                    slot,
+                    source_index,
+                    external,
+                    internal
+                );
+                ProducerNode *node = written < 0 ||
+                    (size_t)written >= sizeof(node_name) ? NULL :
+                    producer_add_node(
+                        producer,
+                        KOFUN_SEMANTIC_NODE_REFERENCE,
+                        value,
+                        end,
+                        node_name,
+                        false
+                    );
+                if (node == NULL ||
+                    producer_add_fact(
+                        producer,
+                        node->value.node_id,
+                        KOFUN_SEMANTIC_FACT_TYPE,
+                        KOFUN_SEMANTIC_VALIDATED,
+                        type,
+                        ""
+                    ) == NULL ||
+                    producer_add_fact(
+                        producer,
+                        node->value.node_id,
+                        KOFUN_SEMANTIC_FACT_OWNERSHIP,
+                        KOFUN_SEMANTIC_VALIDATED,
+                        mode,
+                        ""
+                    ) == NULL ||
+                    producer_add_fact(
+                        producer,
+                        node->value.node_id,
+                        KOFUN_SEMANTIC_FACT_ORIGIN,
+                        KOFUN_SEMANTIC_VALIDATED,
+                        node_name,
+                        ""
+                    ) == NULL) {
+                    free(callee);
+                    free(slot_text);
+                    free(source_index_text);
+                    free(argument_text);
+                    free(value_text);
+                    free(external);
+                    free(internal);
+                    free(type);
+                    free(mode);
+                    return false;
+                }
+            }
+            free(callee);
+            free(slot_text);
+            free(source_index_text);
+            free(argument_text);
+            free(value_text);
+            free(external);
+            free(internal);
+            free(type);
+            free(mode);
+            line = hir_record_start(
+                producer->semantic_observations,
+                "call-argument",
+                line + 1
+            );
+        }
+    }
+    {
+        int64_t line = hir_record_start(
+            producer->semantic_observations,
             "control",
             0
         );
@@ -3174,33 +3288,84 @@ static bool producer_parameter_type_span(
     return true;
 }
 
+static bool producer_parameter_head(
+    const Producer *producer,
+    const ProducerFunction *function,
+    const ProducerBinding *binding,
+    int64_t *head,
+    int64_t *parameters_end
+) {
+    int64_t open = parameter_open(producer->source, function->start);
+    int64_t cursor;
+    if (open < 0) return false;
+    *parameters_end = balanced_end(producer->source, open, "(", ")");
+    if (*parameters_end < 0) return false;
+    cursor = skip_trivia(producer->source, token_end(producer->source, open));
+    while (cursor < *parameters_end &&
+           !token_equal(producer->source, cursor, ")")) {
+        int64_t internal = parameter_internal_start(
+            producer->source,
+            cursor,
+            *parameters_end
+        );
+        int64_t type = parameter_type_start(
+            producer->source,
+            cursor,
+            *parameters_end
+        );
+        if (internal == binding->declaration_start) {
+            *head = cursor;
+            return true;
+        }
+        if (type < 0) return false;
+        int64_t type_end = callable_type_end(producer->source, type);
+        if (type_end < 0) {
+            type_end = annotation_type_end(producer->source, type);
+        }
+        int64_t separator = skip_trivia(producer->source, type_end);
+        cursor = separator < *parameters_end &&
+            token_equal(producer->source, separator, ",")
+            ? skip_trivia(
+                producer->source,
+                token_end(producer->source, separator)
+            ) : separator;
+    }
+    return false;
+}
+
+static bool producer_parameter_external_span(
+    const Producer *producer,
+    const ProducerFunction *function,
+    const ProducerBinding *binding,
+    KofunSemanticSpan *span
+) {
+    int64_t head;
+    int64_t end;
+    int64_t external;
+    if (!producer_parameter_head(
+            producer, function, binding, &head, &end)) return false;
+    external = parameter_external_start(producer->source, head, end);
+    if (external < 0) return false;
+    *span = producer_span(
+        external,
+        token_end(producer->source, external)
+    );
+    return true;
+}
+
 static bool producer_parameter_ownership_span(
     const Producer *producer,
     const ProducerFunction *function,
     const ProducerBinding *binding,
     KofunSemanticSpan *span
 ) {
-    int64_t open = parameter_open(producer->source, function->start);
-    int64_t cursor;
-    if (open < 0) return false;
-    cursor = skip_trivia(producer->source, token_end(producer->source, open));
-    while (cursor < binding->declaration_start) {
-        int64_t next = skip_trivia(
-            producer->source,
-            token_end(producer->source, cursor)
-        );
-        if (next == binding->declaration_start &&
-            (token_equal(producer->source, cursor, "read") ||
-             token_equal(producer->source, cursor, "edit") ||
-             token_equal(producer->source, cursor, "take"))) {
-            *span = producer_span(
-                cursor, token_end(producer->source, cursor));
-            return true;
-        }
-        if (next <= cursor) break;
-        cursor = next;
-    }
-    return false;
+    int64_t head;
+    int64_t end;
+    if (!producer_parameter_head(
+            producer, function, binding, &head, &end) ||
+        !ownership_mode_token(producer->source, head)) return false;
+    *span = producer_span(head, token_end(producer->source, head));
+    return true;
 }
 
 static bool producer_result_type_span(
@@ -3264,7 +3429,7 @@ static bool producer_resolve_interface_type(
     if (type == NULL || type->kind != KOFUN_STAGE2_INTERFACE_ADT) {
         producer_set_tooling_error(
             result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-            "KIF v1 supports only complete Int or flat nominal function signatures"
+            "KIF v2 supports only complete Int or flat nominal function signatures"
         );
         return false;
     }
@@ -3313,7 +3478,7 @@ static bool producer_build_interface_snapshot(
                 !result->tooling_emission_failed) {
                 producer_set_tooling_error(
                     result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                    "KIF v1 function signature is incomplete"
+                    "KIF v2 function signature is incomplete"
                 );
             }
             return false;
@@ -3327,6 +3492,7 @@ static bool producer_build_interface_snapshot(
                 producer, &binding->node);
             KofunSemanticSpan use;
             KofunSemanticSpan ownership;
+            KofunSemanticSpan external;
             KofunSemanticId type_symbol_id;
             if (binding->function_start != function->start || node == NULL ||
                 node->value.kind != KOFUN_SEMANTIC_NODE_PARAMETER) {
@@ -3336,7 +3502,7 @@ static bool producer_build_interface_snapshot(
                     producer, function, binding, &ownership)) {
                 producer_set_tooling_error(
                     result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                    "KIF v1 does not support ownership modes in published signatures"
+                    "KIF v2 does not support ownership modes in published signatures"
                 );
                 return false;
             }
@@ -3356,10 +3522,31 @@ static bool producer_build_interface_snapshot(
                     !result->tooling_emission_failed) {
                     producer_set_tooling_error(
                         result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                        "KIF v1 function parameter signature is incomplete"
+                        "KIF v2 function parameter signature is incomplete"
                     );
                 }
                 return false;
+            }
+            if (producer_parameter_external_span(
+                    producer, function, binding, &external)) {
+                size_t label_length = (size_t)(external.end - external.start);
+                if (label_length == 0u ||
+                    label_length >= KOFUN_STAGE2_INTERFACE_NAME_BYTES) {
+                    producer_set_tooling_error(
+                        result, "EKI03", 0u, PRODUCER_EVENT_NONE,
+                        "KIF compiler parameter-label limit exceeded"
+                    );
+                    return false;
+                }
+                memcpy(
+                    snapshot->parameter_labels[snapshot->type_reference_count],
+                    producer->source + external.start,
+                    label_length
+                );
+                snapshot->parameter_labels[snapshot->type_reference_count]
+                    [label_length] = '\0';
+                snapshot->parameter_label_lengths[
+                    snapshot->type_reference_count] = (uint16_t)label_length;
             }
             snapshot->type_reference_symbol_ids[
                 snapshot->type_reference_count++] = type_symbol_id;
@@ -3371,7 +3558,7 @@ static bool producer_build_interface_snapshot(
                 !result->tooling_emission_failed) {
                 producer_set_tooling_error(
                     result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                    "KIF v1 function signature is incomplete"
+                    "KIF v2 function signature is incomplete"
                 );
             }
             return false;
@@ -3389,6 +3576,7 @@ static bool producer_build_interface_snapshot(
         }
         fact = &snapshot->facts[snapshot->fact_count - 1u];
         fact->parameter_type_start = (uint16_t)parameter_start;
+        fact->parameter_label_start = (uint16_t)parameter_start;
         fact->result_type_symbol_id = result_type_symbol_id;
     }
     for (index = 0u; index < producer->type_count; index += 1u) {
@@ -3397,7 +3585,7 @@ static bool producer_build_interface_snapshot(
         if (type->kind != KOFUN_STAGE2_INTERFACE_ADT) {
             producer_set_tooling_error(
                 result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                "KIF v1 does not support record signature publication"
+                "KIF v2 does not support record signature publication"
             );
             return false;
         }
@@ -3430,7 +3618,7 @@ static bool producer_build_interface_snapshot(
                     !result->tooling_emission_failed) {
                     producer_set_tooling_error(
                         result, "EKI02", 0u, PRODUCER_EVENT_NONE,
-                        "KIF v1 constructor payload signature is incomplete"
+                        "KIF v2 constructor payload signature is incomplete"
                     );
                 }
                 return false;
