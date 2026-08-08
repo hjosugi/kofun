@@ -20,7 +20,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "b8bcaa9b24281ad8ec4e1300c8a444cffe352331"
+        "8e831320736f2c0aa53eea228ec77ef8f41e3c33",
+        "f9adbcf72de09939782b11499a845650a6f171d1"
       ],
       "claims": [
         {
@@ -37,6 +38,14 @@
         },
         {
           "agent_id": "codex-root-26-wasm-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-26-post-1098-topology-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-26-post-1098-topology-20260809",
           "status": "released"
         }
       ]
@@ -50,7 +59,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "d0e000d535fb6861abe7a5e582a958d29d1e2461"
+        "8e831320736f2c0aa53eea228ec77ef8f41e3c33",
+        "f81fab678c7a3da0d4df0ad297df88838195ba12"
       ],
       "claims": [
         {
@@ -67,6 +77,14 @@
         },
         {
           "agent_id": "codex-30-d0e-adt-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-30-post-1099-topology-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-30-post-1099-topology-20260809",
           "status": "released"
         }
       ]
@@ -261,8 +279,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "10780c2ff4fd7ba97b4beba245d38d0fac7a3c25",
-        "70ff1b2b35fbdf1cc3084b96d283bc07e84f35de"
+        "8e831320736f2c0aa53eea228ec77ef8f41e3c33",
+        "cf1a1fcfecdc31a84681c867a369542b2a966979"
       ],
       "claims": [
         {
@@ -287,6 +305,22 @@
         },
         {
           "agent_id": "codex-637-1094-split-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-637-list-text-ops-child-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-637-list-text-ops-child-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-637-post-1100-topology-20260809",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-637-post-1100-topology-20260809",
           "status": "released"
         }
       ]
@@ -375,7 +409,7 @@
       "blocked_by": [],
       "evidence_commits": [
         "09a3229c33fd309f61a0a0ba407fd543f8c670e6",
-        "9fc27d8da59aa4d5ba92e24d7e76bd05be575257",
+        "5c43d4999aefe4f6caeb15a19207bf41fa9935d8",
         "bbb6b0ffee24952016394dc6352499a89ec3e938",
         "bbf7af74862a23019cbbb73ade3b39b8aac605fa"
       ],
@@ -386,6 +420,14 @@
         },
         {
           "agent_id": "codex-725-topology-refresh-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-725-868-metadata-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-725-868-metadata-audit-20260808",
           "status": "released"
         }
       ]
@@ -449,8 +491,8 @@
       "evidence_commits": [
         "0a209468da3698a31cf6177b863284fd04c9a374",
         "1be32d5b9b7cdd9dbcb4532b6c1b094ec5b5f779",
-        "b783e7697d3791ce26def31e7b58a51367c83036",
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+        "5c43d4999aefe4f6caeb15a19207bf41fa9935d8",
+        "b783e7697d3791ce26def31e7b58a51367c83036"
       ],
       "claims": [
         {
@@ -459,6 +501,14 @@
         },
         {
           "agent_id": "codex-868-boundary-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-725-868-metadata-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-725-868-metadata-audit-20260808",
           "status": "released"
         }
       ]
@@ -472,8 +522,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "4a722890e30ad8827e05028d6cd8aedd5d3d104d",
-        "bcdab5d2d5edd0ad0af8ad65505c54c52a1fc4a3"
+        "08718618aeb3f4b81a64ed470ffcf5c6087bee3f",
+        "8e831320736f2c0aa53eea228ec77ef8f41e3c33"
       ],
       "claims": [
         {
@@ -482,6 +532,14 @@
         },
         {
           "agent_id": "codex-882-closeability-audit-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-root-882-c11-lowering-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-root-882-c11-lowering-20260808",
           "status": "released"
         }
       ]
