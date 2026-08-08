@@ -9,7 +9,7 @@
     "deferred",
     "in-progress"
   ],
-  "open_issues": 60,
+  "open_issues": 59,
   "issues": [
     {
       "number": 26,
@@ -599,6 +599,10 @@
         {
           "agent_id": "codex-881-debt-retire-20260808",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-881-debt-retire-20260808",
+          "status": "merged"
         }
       ]
     },
@@ -693,6 +697,10 @@
         {
           "agent_id": "codex-915-debt-retire-20260808",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-915-debt-retire-20260808",
+          "status": "merged"
         }
       ]
     },
@@ -728,6 +736,10 @@
         {
           "agent_id": "codex-922-debt-retire-20260808",
           "status": "active"
+        },
+        {
+          "agent_id": "codex-922-debt-retire-20260808",
+          "status": "merged"
         }
       ]
     },
@@ -814,24 +826,10 @@
         {
           "agent_id": "codex-1032-debt-retire-20260808",
           "status": "pr-open"
-        }
-      ]
-    },
-    {
-      "number": 1086,
-      "title": "LSP selective imports: require a valid caller module header",
-      "state_labels": [
-        "ready"
-      ],
-      "state_line": "ready",
-      "blocked_by": [],
-      "evidence_commits": [
-        "a362295356d5ddbfa6d0d3d7216126a25ae8c801"
-      ],
-      "claims": [
+        },
         {
-          "agent_id": "codex-lsp-module-header-reachability-20260808",
-          "status": "active"
+          "agent_id": "codex-1032-debt-retire-20260808",
+          "status": "merged"
         }
       ]
     }
