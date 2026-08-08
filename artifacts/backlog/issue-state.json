@@ -385,7 +385,19 @@
       ],
       "state_line": "deferred",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-532-science-roadmap-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-532-science-roadmap-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 536,
@@ -395,7 +407,19 @@
       ],
       "state_line": "deferred",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-536-ndarray-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-536-ndarray-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 537,
@@ -405,7 +429,19 @@
       ],
       "state_line": "deferred",
       "blocked_by": [],
-      "evidence_commits": []
+      "evidence_commits": [
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-537-linear-algebra-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-537-linear-algebra-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 538,
@@ -424,8 +460,22 @@
         "deferred"
       ],
       "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        536
+      ],
+      "evidence_commits": [
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-539-statistics-deferred-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-539-statistics-deferred-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 540,
@@ -434,8 +484,22 @@
         "deferred"
       ],
       "state_line": "deferred",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        536
+      ],
+      "evidence_commits": [
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-540-dataframe-boundary-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-540-dataframe-boundary-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 543,
@@ -446,7 +510,8 @@
       "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "c20a03d69ebc7f65ce83ef284869825184960b7a"
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750",
+        "9300e4c3c53f5b5e225cbf8f875cf7d5d4ec96e3"
       ],
       "claims": [
         {
@@ -455,6 +520,14 @@
         },
         {
           "agent_id": "codex-543-current-boundary-20260808",
+          "status": "released"
+        },
+        {
+          "agent_id": "codex-543-optional-parent-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-543-optional-parent-audit-20260808",
           "status": "released"
         }
       ]
@@ -633,19 +706,44 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        902
+      ],
+      "evidence_commits": [
+        "356931b8c8f8d399d7b8d3aa84421bcec99578f6",
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-574-bindgen-translation-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-574-bindgen-translation-audit-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 576,
       "title": "Koka: reuse matched ADT constructors in place when storage is unique",
       "state_labels": [
-        "blocked"
+        "needs-detail"
       ],
-      "state_line": "blocked",
+      "state_line": "needs-detail",
       "blocked_by": [],
       "evidence_commits": [
-        "b6241acc8cd33819a4a1c92b1a301c02b46cd133"
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-576-reuse-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-576-reuse-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -831,7 +929,17 @@
       "state_line": "deferred",
       "blocked_by": [],
       "evidence_commits": [
-        "d1f58a6a9e20764b25ee28773df5355512213dfa"
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-738-forecasting-research-audit-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-738-forecasting-research-audit-20260808",
+          "status": "released"
+        }
       ]
     },
     {
@@ -961,8 +1069,22 @@
         "blocked"
       ],
       "state_line": "blocked",
-      "blocked_by": [],
-      "evidence_commits": []
+      "blocked_by": [
+        884
+      ],
+      "evidence_commits": [
+        "6c77b707c7f1795deaef71b8b9238d2ac6877750"
+      ],
+      "claims": [
+        {
+          "agent_id": "codex-refresh-883-upgrade-writer-20260808",
+          "status": "active"
+        },
+        {
+          "agent_id": "codex-refresh-883-upgrade-writer-20260808",
+          "status": "released"
+        }
+      ]
     },
     {
       "number": 884,

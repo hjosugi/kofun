@@ -89,12 +89,8 @@
 #                     comments on #645 extract to zero events. An inert claim
 #                     is worse than none: its author believes the signal is
 #                     published.
-unverifiable-stamp	738	d1f58a6a9e20764b25ee28773df5355512213dfa	Time-series forecasting research: stamp names a commit on no branch
 stateless-tracker	281	-	Position paper: what replacing C and Rust actually requires
 unnamed-blocker	569	-	RFC: define affine authority capabilities for environment 
 capability-blocker	570	-	Austral: propagate ownership kind structurally through gen
 capability-blocker	571	-	Austral/Nim: support zero-copy borrowed results without us
-unnamed-blocker	574	-	V: generate audited C bindings from Clang AST before attem
-unnamed-blocker	576	-	Koka: reuse matched ADT constructors in place when storage
-unnamed-blocker	883	-	Typed upgrade patches slice 3: opt-in atomic exact-type re
 capability-blocker	885	-	Typed upgrade patches slice 1: validate schema and compute
